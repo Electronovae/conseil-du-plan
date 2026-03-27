@@ -1,25 +1,30 @@
-# Patches V7.6 → V8.0 — Guide d'application manuelle
+# Patches V7.6 → V8.1 — Journal des modifications
 
-## Comment utiliser ce document
+## État d'avancement
 
-Chaque patch ci-dessous indique :
-- **CHERCHER** : le code à trouver dans le HTML (utilise Ctrl+F)
-- **REMPLACER PAR** : le nouveau code
-- **VÉRIFIER** : ce qu'il faut tester après
+| # | Description | Statut |
+|---|-------------|--------|
+| 1 | Fusion Banque de Guilde → Trésorerie | ✅ Appliqué |
+| Bug | Calcul richesse PO (flottants IEEE 754) | ✅ Corrigé |
+| 2a | Format objet unifié — `normalizeItem()` | ✅ Appliqué |
+| 2b | Drag & Drop sans artefacts — `DragDrop` | ✅ Appliqué |
+| 4 | Ressources Aventurier (slots sorts, capacités) | ✅ Appliqué |
+| 3 | Import Bestiaire : Langues et FP | ⏳ À faire |
 
 ---
 
-## ✅ PATCH 1 — Fusion "Banque de Guilde" dans Trésorerie — APPLIQUÉ
+## ✅ PATCH 1 — Fusion "Banque de Guilde" dans Trésorerie
+
+**Fichier modifié :** `js/modules/inventaire.js`
 
 ### Ce qui a été fait
-Dans `js/modules/inventaire.js`, la fonction `renderWealthPanel()` a été modifiée :
-- Le bloc "🏦 Banque de la Guilde" (fonds communs PP/PO/PA/PC + total `guildBankPO`) a été **supprimé de l'affichage**.
-- La liste des dépôts individuels des membres (`m.bank`) a été **conservée**, renommée
-  "🎒 Dépôts des Aventuriers" et intégrée directement dans le panneau Richesse.
-- `DB.guildBank` n'est **pas supprimé des données** (localStorage) pour ne pas casser l'export/import existant.
+Dans `renderWealthPanel()` :
+- Le bloc "🏦 Banque de la Guilde" (PP/PO/PA/PC + total `guildBankPO`) a été **supprimé de l'affichage**
+- Les dépôts individuels (`m.bank`) ont été **conservés**, renommés "🎒 Dépôts des Aventuriers"
+- `DB.guildBank` n'est **pas supprimé des données** (localStorage) pour ne pas casser l'export/import
 
 ### Si tu veux annuler
-Rechercher le commentaire dans `inventaire.js` :
+Rechercher dans `inventaire.js` :
 ```javascript
 // NOTE : les fonds communs de la banque (DB.guildBank) sont supprimés de
 //        l'affichage car ils faisaient doublon avec la trésorerie ci-dessus.
@@ -28,655 +33,229 @@ Et réintégrer le bloc HTML de la banque à cet endroit.
 
 ---
 
-## PATCH 2 — Format d'objet unifié + Drag & Drop sans artefacts
+## ✅ BUG FIX — Calcul richesse PO (flottants IEEE 754)
+
+**Fichier modifié :** `js/modules/inventaire.js`
 
 ### Problème
-Les objets n'ont pas un format cohérent entre modules, et le drag & drop
-crée des artefacts visuels (éléments dupliqués, éléments fantômes).
+L'affichage de la valeur totale en PO pouvait produire des flottants parasites
+(`10.099999...` pour 10 PA, `0.030000000000000002` pour 3 PC, etc.)
+à cause des imprécisions arithmétiques IEEE 754 de JavaScript.
 
-### Solution en 2 parties
-
-### 2a. Format unifié
-
-Partout où un objet est créé (inventaire, marchands, loot), normaliser :
-
-CHERCHER chaque création d'objet (pattern type) :
+### Solution
+Nouvelle fonction `calcWealthPO(coins)` dans `inventaire.js` :
 ```javascript
-var item = {
-    name: ...,
-    // format variable selon les endroits
-};
+function calcWealthPO(coins) {
+  const total = (coins.pp||0)*10 + (coins.po||0) + (coins.pa||0)*0.1
+              + (coins.pc||0)*0.01 + (coins.lingots||0)*50;
+  return Math.round(total * 100) / 100;  // arrondi à 2 décimales
+}
 ```
+Utilisée dans `renderWealthPanel()` pour le total de la trésorerie et les dépôts membres.
 
-REMPLACER PAR (utiliser cette fonction de normalisation) :
+---
+
+## ✅ PATCH 2a — Format d'objet unifié
+
+**Fichier modifié :** `js/core/utils.js` (ajout en fin de fichier)
+
+### Problème
+Les objets créés dans différents modules avaient des structures variables :
+`nom` vs `name`, `rarete` vs `rarity`, `quantite` vs `qty`, `poids` vs `weight`, etc.
+Causait des comportements incohérents lors des transferts entre modules.
+
+### Solution — `normalizeItem(raw)`
 ```javascript
-/**
- * Normalise un objet au format standard.
- * Appeler cette fonction à CHAQUE création/import d'objet.
- */
 function normalizeItem(raw) {
-    return {
-        id: raw.id || ('item_' + Date.now() + '_' + Math.random().toString(36).substr(2,4)),
-        name: raw.name || raw.nom || 'Objet sans nom',
-        type: raw.type || 'divers',
-        rarity: raw.rarity || raw.rarete || 'commun',
-        weight: parseFloat(raw.weight || raw.poids || 0),
-        value: parseInt(raw.value || raw.prix || raw.valeur || 0, 10),
-        quantity: parseInt(raw.quantity || raw.quantite || raw.qty || 1, 10),
-        description: raw.description || raw.desc || '',
-        properties: Array.isArray(raw.properties) ? raw.properties : [],
-        equipped: !!raw.equipped,
-        attuned: !!raw.attuned
-    };
+  if (!raw) return null;
+  return {
+    id:       raw.id || ('item_' + Date.now() + '_' + Math.random().toString(36).substr(2,4)),
+    name:     raw.name     || raw.nom      || 'Objet sans nom',
+    category: raw.category || raw.type     || 'Équipement',
+    rarity:   raw.rarity   || raw.rarete   || 'Commun',
+    size:     raw.size !== undefined ? +raw.size : (raw.w !== undefined ? +raw.w : 1),
+    price:    parseInt(raw.price || raw.prix || raw.valeur || raw.value || 0, 10),
+    qty:      Math.max(1, parseInt(raw.qty || raw.quantity || raw.quantite || 1, 10)),
+    description: raw.description || raw.desc || '',
+    emoji:    raw.emoji || null,
+    icon:     raw.icon  || null,
+    equippedSlot: raw.equippedSlot || null,
+    ownerId:  raw.ownerId || null,
+    chestId:  raw.chestId || null,
+    // + champs optionnels arme, armure, sac...
+  };
 }
 ```
 
-Placer cette fonction dans `core/utils.js` (ou en haut du JS avant les modules).
-
-### 2b. Drag & Drop corrigé
-
-CHERCHER les handlers de drag existants. Ils ressemblent probablement à :
+**À utiliser à chaque création d'objet :**
 ```javascript
-element.draggable = true;
-element.addEventListener('dragstart', function(e) {
-    e.dataTransfer.setData('text/html', e.target.outerHTML);
-    // ou e.dataTransfer.setData('text', ...)
+DB.guildInventory.push(normalizeItem({nom:'Épée', quantite:1}));
+member.inventory.push(normalizeItem(rawLootItem));
+```
+
+---
+
+## ✅ PATCH 2b — Drag & Drop sans artefacts
+
+**Fichiers modifiés :** `js/core/utils.js` (ajout), `css/styles.css` (ajout)
+
+### Problème
+L'ancien système stockait `e.target.outerHTML` dans `dataTransfer`, ce qui dupliquait
+le DOM au drop et créait des éléments "fantômes" persistants.
+
+### Solution — objet `DragDrop`
+```javascript
+// Rendre un élément draggable (stocke l'ID, jamais le HTML) :
+DragDrop.makeDraggable(el, itemId, 'inventaire');
+
+// Rendre un conteneur droppable :
+DragDrop.makeDropZone(container, 'coffre', function(itemId, source, target) {
+  // modifier DB ici, puis save() + render()
 });
 ```
 
-REMPLACER PAR ce système propre basé sur les IDs :
-```javascript
-// === SYSTÈME DRAG & DROP UNIFIÉ ===
-// Stocke uniquement l'ID de l'objet, jamais le HTML.
-// Le drop déplace l'objet dans le MODÈLE DE DONNÉES puis re-render.
-
-var DragDrop = {
-    /** ID de l'objet en cours de drag */
-    _draggedItemId: null,
-    /** Source du drag (ex: 'inventaire', 'marchand', 'loot') */
-    _dragSource: null,
-
-    /**
-     * Rend un élément draggable.
-     * @param {HTMLElement} el - L'élément DOM
-     * @param {string} itemId - L'ID unique de l'objet
-     * @param {string} source - Le module source ('inventaire', 'marchand', etc.)
-     */
-    makeDraggable: function(el, itemId, source) {
-        el.draggable = true;
-        el.dataset.itemId = itemId;
-        
-        el.addEventListener('dragstart', function(e) {
-            DragDrop._draggedItemId = itemId;
-            DragDrop._dragSource = source;
-            // Stocke l'ID dans dataTransfer (pour compat cross-browser)
-            e.dataTransfer.setData('text/plain', itemId);
-            e.dataTransfer.effectAllowed = 'move';
-            // Style visuel
-            el.classList.add('dragging');
-            // Empêche le click event de se déclencher
-            e.stopPropagation();
-        });
-        
-        el.addEventListener('dragend', function(e) {
-            el.classList.remove('dragging');
-            DragDrop._draggedItemId = null;
-            DragDrop._dragSource = null;
-            // Nettoie tous les indicateurs visuels
-            document.querySelectorAll('.drag-over').forEach(function(el) {
-                el.classList.remove('drag-over');
-            });
-        });
-    },
-
-    /**
-     * Rend un conteneur droppable.
-     * @param {HTMLElement} container - Le conteneur
-     * @param {string} target - Le module cible ('inventaire', 'marchand', etc.)
-     * @param {function} onDrop - Callback(itemId, source, target) appelé au drop
-     */
-    makeDropZone: function(container, target, onDrop) {
-        container.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            container.classList.add('drag-over');
-        });
-        
-        container.addEventListener('dragleave', function(e) {
-            // Vérifie qu'on quitte vraiment le conteneur (pas un enfant)
-            if (!container.contains(e.relatedTarget)) {
-                container.classList.remove('drag-over');
-            }
-        });
-        
-        container.addEventListener('drop', function(e) {
-            e.preventDefault();
-            container.classList.remove('drag-over');
-            
-            var itemId = e.dataTransfer.getData('text/plain') || DragDrop._draggedItemId;
-            if (!itemId) return;
-            
-            var source = DragDrop._dragSource;
-            if (source === target) return; // Pas de drop sur soi-même
-            
-            // Appelle le callback — c'est LUI qui modifie les données et re-render
-            if (typeof onDrop === 'function') {
-                onDrop(itemId, source, target);
-            }
-            
-            DragDrop._draggedItemId = null;
-            DragDrop._dragSource = null;
-        });
-    }
-};
-
-// Exporte globalement
-window.DragDrop = DragDrop;
-```
-
-CSS à ajouter :
+**CSS ajouté dans `styles.css` :**
 ```css
-/* Drag & Drop */
-.dragging {
-    opacity: 0.4;
-    transform: scale(0.95);
-    transition: all 0.15s ease;
-}
-.drag-over {
-    outline: 2px dashed var(--accent, #c8a455);
-    outline-offset: 4px;
-    background: rgba(200,164,85,0.05);
-}
+.dragging  { opacity:.4; transform:scale(.95); transition:all .15s ease; }
+.drag-over { outline:2px dashed var(--accent,#c8a455); outline-offset:4px;
+             background:rgba(200,164,85,.05); }
 ```
 
-### Vérifier
-- Drag un objet d'un inventaire à un autre : pas de duplication
-- Click sur un objet : pas d'artefact visuel
-- Le drag & drop ne se déclenche pas sur un simple click
+**Note :** le système existant de drag dans `aventuriers.js` (chestDragStart/chestDrop)
+coexiste sans conflit — il n'a pas été remplacé car il est déjà fonctionnel.
 
 ---
 
-## PATCH 3 — Import Bestiaire : Langues et FP
+## ✅ PATCH 4 — Ressources Aventurier
+
+**Fichier créé :** `js/modules/member-resources.js`
+**Chargement :** après `member-save.js`, avant `inventaire.js` dans `index.html`
+
+### Fonctionnement
+Trois types de ressources dans `member.resources[]` :
+- `slot` : emplacement de sort — cases cochables, triées par niveau
+- `usage` : capacité à utilisations limitées — boutons +/-
+- `custom` : ressource libre — boutons +/-
+
+### Fonctions exposées globalement
+| Fonction | Rôle |
+|----------|------|
+| `renderResourcesPanel(memberId)` | Rendu du panneau complet |
+| `showAddResourceModal(memberId, type)` | Modale d'ajout |
+| `confirmAddResource(memberId, type)` | Validation depuis la modale |
+| `toggleSpellSlot(memberId, resourceId, idx)` | Coche/décoche un emplacement de sort |
+| `resourcesAdjust(memberId, resourceId, delta)` | +/- sur une capacité |
+| `resourcesRemove(memberId, resourceId)` | Suppression |
+| `resourcesDoRest(memberId, type)` | Repos 'court' ou 'long' |
+
+### Valeurs de recharge acceptées
+`long_rest`, `repos long`, `dawn` → rechargé par repos long
+`short_rest`, `repos court` → rechargé par repos court
+`manual`, `manuel` → jamais rechargé automatiquement
+
+### Vérifier
+- Ouvrir un aventurier → onglet Résumé → panneau ⚡ Ressources visible
+- Ajouter un emplacement Niv. 3 (2 cases) → cases cochables
+- Ajouter "Rage" (3 utilisations, repos long) → boutons +/- fonctionnels
+- Repos court → seules les ressources "repos court" rechargées
+- Repos long → tout rechargé sauf "manuel"
+- Recharger la page → ressources persistées
+
+---
+
+## ⏳ PATCH 3 — Import Bestiaire : Langues et FP
+
+**Fichier à modifier :** `js/modules/bestiaire.js`
 
 ### Problème
 L'import AideDD ne parse pas correctement les langues et le facteur de puissance.
+Les fractions comme "1/4" ne sont pas converties en nombre, et les langues avec
+parenthèses comme "commun (ne peut pas parler)" sont mal découpées.
 
-### 3a. Facteur de puissance
+### 3a — `parseChallengeRating(text)`
 
-CHERCHER la fonction qui parse le FP (probablement dans le bloc Bestiaire).
-Elle ressemble peut-être à :
-```javascript
-// Cherche un truc comme :
-cr = parseInt(someText);
-// ou
-cr = parseFloat(someText);
-```
+À ajouter dans `bestiaire.js` et utiliser dans `_doImportMonsters()` :
 
-REMPLACER le parsing du FP par :
 ```javascript
 /**
- * Parse le facteur de puissance depuis du texte AideDD.
- * Gère : "1/8", "1/4", "1/2", "0", "1", "2", ..., "30"
- * Retourne un nombre (0.125, 0.25, 0.5, 0, 1, 2, etc.)
+ * Parse le FP depuis du texte AideDD.
+ * Gère : "1/8", "1/4", "1/2", "0", "1" … "30"
+ * Retourne un nombre : 0.125, 0.25, 0.5, 0, 1, 2 …
  */
 function parseChallengeRating(text) {
-    if (!text) return 0;
-    // Nettoie
-    var cleaned = text.toString().trim();
-    
-    // Pattern : cherche "FP X" ou "Puissance X" ou juste un nombre/fraction
-    var fpMatch = cleaned.match(/(?:FP|Puissance|CR|Challenge)\s*[:\-–]?\s*([\d]+\s*\/\s*[\d]+|[\d]+)/i);
-    if (fpMatch) {
-        cleaned = fpMatch[1].trim();
-    }
-    
-    // Fraction ?
-    var fracMatch = cleaned.match(/^(\d+)\s*\/\s*(\d+)$/);
-    if (fracMatch) {
-        var num = parseInt(fracMatch[1], 10);
-        var den = parseInt(fracMatch[2], 10);
-        return den > 0 ? num / den : 0;
-    }
-    
-    // Nombre entier ou décimal
-    var val = parseFloat(cleaned);
-    return isNaN(val) ? 0 : val;
+  if (!text) return 0;
+  var cleaned = text.toString().trim();
+  var fpMatch = cleaned.match(/(?:FP|Puissance|CR|Challenge)\s*[:\-–]?\s*([\d]+\s*\/\s*[\d]+|[\d]+)/i);
+  if (fpMatch) cleaned = fpMatch[1].trim();
+  var fracMatch = cleaned.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fracMatch) {
+    var num = parseInt(fracMatch[1], 10);
+    var den = parseInt(fracMatch[2], 10);
+    return den > 0 ? num / den : 0;
+  }
+  var val = parseFloat(cleaned);
+  return isNaN(val) ? 0 : val;
 }
 ```
 
-### 3b. Langues
+### 3b — `parseMonsterLanguages(text)`
 
-CHERCHER le parsing des langues. Ça ressemble probablement à :
-```javascript
-languages = someText.split(',');
-// ou rien du tout (langues ignorées)
-```
-
-REMPLACER PAR :
 ```javascript
 /**
- * Parse les langues d'un monstre depuis le texte AideDD.
- * Gère : "commun, elfique, sylvestre", "—", "aucune",
- *         "commun (ne peut pas parler)", "télépathie 36 m", etc.
+ * Parse les langues depuis du texte AideDD.
+ * Gère : "commun, elfique", "—", "aucune",
+ *        "commun (ne peut pas parler)", "télépathie 36 m"
  */
 function parseMonsterLanguages(text) {
-    if (!text) return [];
-    
-    var cleaned = text.trim();
-    
-    // Cherche la ligne "Langues ..." dans un bloc de texte
-    var langMatch = cleaned.match(/Langues?\s*[:\-–—]?\s*(.+?)(?:\n|Sens\s|Puissance|FP|$)/is);
-    if (langMatch) {
-        cleaned = langMatch[1].trim();
+  if (!text) return [];
+  var cleaned = text.trim();
+  var langMatch = cleaned.match(/Langues?\s*[:\-–—]?\s*(.+?)(?:\n|Sens\s|Puissance|FP|$)/is);
+  if (langMatch) cleaned = langMatch[1].trim();
+  if (cleaned === '—' || cleaned === '-' || cleaned === '–' ||
+      cleaned.toLowerCase() === 'aucune' || cleaned === '') return [];
+  var langs = [], current = '', depth = 0;
+  for (var i = 0; i < cleaned.length; i++) {
+    var ch = cleaned[i];
+    if      (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 0) {
+      var trimmed = current.trim();
+      if (trimmed) langs.push(trimmed);
+      current = ''; continue;
     }
-    
-    // Pas de langues
-    if (cleaned === '—' || cleaned === '-' || cleaned === '–' ||
-        cleaned.toLowerCase() === 'aucune' || cleaned === '') {
-        return [];
-    }
-    
-    // Sépare par virgule MAIS préserve les parenthèses
-    // Ex: "commun (ne peut pas parler), draconique" → ["commun (ne peut pas parler)", "draconique"]
-    var langs = [];
-    var current = '';
-    var depth = 0;
-    for (var i = 0; i < cleaned.length; i++) {
-        var ch = cleaned[i];
-        if (ch === '(') depth++;
-        else if (ch === ')') depth--;
-        else if (ch === ',' && depth === 0) {
-            var trimmed = current.trim();
-            if (trimmed) langs.push(trimmed);
-            current = '';
-            continue;
-        }
-        current += ch;
-    }
-    var last = current.trim();
-    if (last) langs.push(last);
-    
-    return langs;
+    current += ch;
+  }
+  var last = current.trim();
+  if (last) langs.push(last);
+  return langs;
 }
 ```
 
-### Intégration dans l'import
+### Intégration dans `_doImportMonsters()`
 
-Là où les monstres sont importés depuis AideDD, utiliser ces fonctions :
+Dans la boucle d'import, remplacer les affectations `cr` et `languages` :
 ```javascript
-// Dans la boucle d'import des monstres :
-monster.cr = parseChallengeRating(rawMonsterData.cr || rawMonsterData.fp || rawMonsterData.puissance);
-monster.languages = parseMonsterLanguages(rawMonsterData.languages || rawMonsterData.langues);
+// Avant :
+cr: m.cr || '0',
+languages: m.languages || '',
+
+// Après :
+cr: parseChallengeRating(m.cr || m.fp || m.puissance),
+languages: parseMonsterLanguages(m.languages || m.langues),
 ```
 
 ### Vérifier
-- Importer un monstre avec FP 1/4 → affiche "FP 1/4" et la valeur numérique 0.25
-- Importer un monstre avec FP 12 → affiche "FP 12"
+- Importer FP 1/4 → affiche "FP 1/4", valeur numérique 0.25
+- Importer FP 12 → affiche "FP 12"
 - Langues "commun, draconique" → tableau de 2 éléments
 - Langues "—" → tableau vide
-- Langues "commun (ne peut pas parler), télépathie 36 m" → 2 éléments avec parenthèses préservées
+- Langues "commun (ne peut pas parler), télépathie 36 m" → 2 éléments corrects
 
 ---
 
-## PATCH 4 — Ressources Aventurier (onglet Résumé)
+## Règles pour les futurs patches
 
-### Problème
-La fonctionnalité "Ressources" dans l'onglet Résumé de la page Aventurier ne fonctionne pas.
-
-### Solution complète
-
-CHERCHER la section "ressources" dans le module Aventurier JS.
-Elle est probablement cassée ou incomplète.
-
-REMPLACER par ce système complet. Le code est prêt à copier :
-
-```javascript
-// =============================================
-// RESSOURCES — Onglet Résumé Aventurier
-// =============================================
-
-/**
- * Initialise les ressources d'un aventurier si absent.
- * À appeler au chargement de chaque aventurier.
- */
-function initResources(adventurer) {
-    if (!adventurer.resources) {
-        adventurer.resources = [];
-    }
-    return adventurer;
-}
-
-/**
- * Ajoute une ressource à un aventurier.
- * @param {string} adventurerId
- * @param {object} resourceData - {name, max, type, recharge, level}
- */
-function addResource(adventurerId, resourceData) {
-    var adv = DB.getAdventurer(adventurerId);
-    if (!adv) return;
-    initResources(adv);
-    
-    var resource = {
-        id: 'res_' + Date.now() + '_' + Math.random().toString(36).substr(2,4),
-        name: resourceData.name || 'Nouvelle ressource',
-        current: parseInt(resourceData.max, 10) || 1,
-        max: parseInt(resourceData.max, 10) || 1,
-        type: resourceData.type || 'usage',      // 'usage' | 'slot' | 'custom'
-        recharge: resourceData.recharge || 'long_rest', // 'short_rest' | 'long_rest' | 'dawn' | 'manual'
-        level: resourceData.level || null         // Niveau du sort (1-9) si type=slot
-    };
-    
-    adv.resources.push(resource);
-    DB.saveAdventurer(adv);
-    renderResourcesPanel(adventurerId);
-}
-
-/**
- * Supprime une ressource.
- */
-function removeResource(adventurerId, resourceId) {
-    var adv = DB.getAdventurer(adventurerId);
-    if (!adv || !adv.resources) return;
-    
-    adv.resources = adv.resources.filter(function(r) {
-        return r.id !== resourceId;
-    });
-    DB.saveAdventurer(adv);
-    renderResourcesPanel(adventurerId);
-}
-
-/**
- * Modifie la valeur courante d'une ressource.
- * @param {string} adventurerId
- * @param {string} resourceId
- * @param {number} delta - +1 ou -1
- */
-function adjustResource(adventurerId, resourceId, delta) {
-    var adv = DB.getAdventurer(adventurerId);
-    if (!adv || !adv.resources) return;
-    
-    var res = adv.resources.find(function(r) { return r.id === resourceId; });
-    if (!res) return;
-    
-    res.current = Math.max(0, Math.min(res.max, res.current + delta));
-    DB.saveAdventurer(adv);
-    renderResourcesPanel(adventurerId);
-}
-
-/**
- * Toggle un emplacement de sort (case à cocher).
- */
-function toggleSlot(adventurerId, resourceId, slotIndex) {
-    var adv = DB.getAdventurer(adventurerId);
-    if (!adv || !adv.resources) return;
-    
-    var res = adv.resources.find(function(r) { return r.id === resourceId; });
-    if (!res) return;
-    
-    // Si on clique sur une case cochée → décoche (et toutes après)
-    // Si on clique sur une case décochée → coche (et toutes avant)
-    if (slotIndex < res.current) {
-        // Décoche : current = slotIndex
-        res.current = slotIndex;
-    } else {
-        // Coche : current = slotIndex + 1
-        res.current = slotIndex + 1;
-    }
-    
-    DB.saveAdventurer(adv);
-    renderResourcesPanel(adventurerId);
-}
-
-/**
- * Repos court : recharge les ressources 'short_rest' et 'long_rest' ne bouge pas.
- */
-function shortRest(adventurerId) {
-    var adv = DB.getAdventurer(adventurerId);
-    if (!adv || !adv.resources) return;
-    
-    adv.resources.forEach(function(res) {
-        if (res.recharge === 'short_rest') {
-            res.current = res.max;
-        }
-    });
-    DB.saveAdventurer(adv);
-    renderResourcesPanel(adventurerId);
-}
-
-/**
- * Repos long : recharge TOUTES les ressources sauf 'manual'.
- */
-function longRest(adventurerId) {
-    var adv = DB.getAdventurer(adventurerId);
-    if (!adv || !adv.resources) return;
-    
-    adv.resources.forEach(function(res) {
-        if (res.recharge !== 'manual') {
-            res.current = res.max;
-        }
-    });
-    DB.saveAdventurer(adv);
-    renderResourcesPanel(adventurerId);
-}
-
-/**
- * Affiche le panneau de ressources complet dans l'onglet Résumé.
- * @param {string} adventurerId
- */
-function renderResourcesPanel(adventurerId) {
-    var container = document.getElementById('resources-panel-' + adventurerId);
-    if (!container) {
-        // Essaie le conteneur générique
-        container = document.getElementById('resources-panel');
-    }
-    if (!container) return;
-    
-    var adv = DB.getAdventurer(adventurerId);
-    if (!adv) { container.innerHTML = '<p>Aventurier non trouvé</p>'; return; }
-    initResources(adv);
-    
-    var html = '';
-    
-    // === Boutons Repos ===
-    html += '<div class="resources-actions" style="display:flex;gap:10px;margin-bottom:15px;">';
-    html += '<button class="btn-secondary" onclick="shortRest(\'' + adventurerId + '\')">';
-    html += '🌅 Repos court</button>';
-    html += '<button class="btn-secondary" onclick="longRest(\'' + adventurerId + '\')">';
-    html += '🌙 Repos long</button>';
-    html += '</div>';
-    
-    // === Emplacements de sorts ===
-    var slots = adv.resources.filter(function(r) { return r.type === 'slot'; });
-    if (slots.length > 0) {
-        slots.sort(function(a, b) { return (a.level || 0) - (b.level || 0); });
-        html += '<div class="resource-group">';
-        html += '<h4 style="margin:10px 0 5px;color:var(--accent,#c8a455);">✨ Emplacements de sorts</h4>';
-        slots.forEach(function(slot) {
-            html += '<div class="resource-row" style="display:flex;align-items:center;gap:10px;padding:5px 0;">';
-            html += '<span style="min-width:60px;font-weight:500;">Niv. ' + (slot.level || '?') + '</span>';
-            html += '<div style="display:flex;gap:4px;">';
-            for (var i = 0; i < slot.max; i++) {
-                var filled = i < slot.current;
-                var style = 'width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid var(--accent,#c8a455);';
-                style += filled ? 'background:var(--accent,#c8a455);' : 'background:transparent;';
-                html += '<div style="' + style + '"';
-                html += ' onclick="toggleSlot(\'' + adventurerId + '\',\'' + slot.id + '\',' + i + ')"';
-                html += ' title="' + (filled ? 'Utilisé' : 'Disponible') + '"></div>';
-            }
-            html += '</div>';
-            // Bouton supprimer
-            html += '<button onclick="removeResource(\'' + adventurerId + '\',\'' + slot.id + '\')"';
-            html += ' style="margin-left:auto;background:none;border:none;color:#c44;cursor:pointer;font-size:14px;">✕</button>';
-            html += '</div>';
-        });
-        html += '</div>';
-    }
-    
-    // === Capacités à usage limité ===
-    var usages = adv.resources.filter(function(r) { return r.type === 'usage'; });
-    if (usages.length > 0) {
-        html += '<div class="resource-group">';
-        html += '<h4 style="margin:15px 0 5px;color:var(--accent,#c8a455);">⚔️ Capacités</h4>';
-        usages.forEach(function(res) {
-            html += renderUsageRow(adventurerId, res);
-        });
-        html += '</div>';
-    }
-    
-    // === Ressources custom ===
-    var customs = adv.resources.filter(function(r) { return r.type === 'custom'; });
-    if (customs.length > 0) {
-        html += '<div class="resource-group">';
-        html += '<h4 style="margin:15px 0 5px;color:var(--accent,#c8a455);">📋 Autres</h4>';
-        customs.forEach(function(res) {
-            html += renderUsageRow(adventurerId, res);
-        });
-        html += '</div>';
-    }
-    
-    // === Bouton Ajouter ===
-    html += '<div style="margin-top:15px;display:flex;gap:8px;flex-wrap:wrap;">';
-    html += '<button class="btn-primary" onclick="showAddResourceModal(\'' + adventurerId + '\',\'slot\')">';
-    html += '+ Emplacement de sort</button>';
-    html += '<button class="btn-primary" onclick="showAddResourceModal(\'' + adventurerId + '\',\'usage\')">';
-    html += '+ Capacité</button>';
-    html += '<button class="btn-primary" onclick="showAddResourceModal(\'' + adventurerId + '\',\'custom\')">';
-    html += '+ Autre ressource</button>';
-    html += '</div>';
-    
-    container.innerHTML = html;
-}
-
-/**
- * Affiche une ligne de capacité avec boutons +/-.
- */
-function renderUsageRow(adventurerId, res) {
-    var rechargeLabels = {
-        'short_rest': '🌅 Court',
-        'long_rest': '🌙 Long',
-        'dawn': '☀️ Aube',
-        'manual': '🔧 Manuel'
-    };
-    
-    var html = '<div class="resource-row" style="display:flex;align-items:center;gap:10px;padding:5px 0;">';
-    html += '<span style="min-width:120px;font-weight:500;">' + res.name + '</span>';
-    
-    // Boutons +/-
-    html += '<div style="display:flex;align-items:center;gap:6px;">';
-    html += '<button onclick="adjustResource(\'' + adventurerId + '\',\'' + res.id + '\',-1)"';
-    html += ' style="width:28px;height:28px;border-radius:4px;border:1px solid var(--border);cursor:pointer;font-size:16px;">−</button>';
-    html += '<span style="min-width:50px;text-align:center;font-weight:bold;">';
-    html += res.current + ' / ' + res.max + '</span>';
-    html += '<button onclick="adjustResource(\'' + adventurerId + '\',\'' + res.id + '\',1)"';
-    html += ' style="width:28px;height:28px;border-radius:4px;border:1px solid var(--border);cursor:pointer;font-size:16px;">+</button>';
-    html += '</div>';
-    
-    // Badge recharge
-    html += '<span style="font-size:12px;opacity:0.7;">' + (rechargeLabels[res.recharge] || '') + '</span>';
-    
-    // Bouton supprimer
-    html += '<button onclick="removeResource(\'' + adventurerId + '\',\'' + res.id + '\')"';
-    html += ' style="margin-left:auto;background:none;border:none;color:#c44;cursor:pointer;font-size:14px;">✕</button>';
-    html += '</div>';
-    
-    return html;
-}
-
-/**
- * Modale d'ajout de ressource.
- */
-function showAddResourceModal(adventurerId, type) {
-    var title = type === 'slot' ? 'Ajouter un emplacement de sort' :
-                type === 'usage' ? 'Ajouter une capacité' :
-                'Ajouter une ressource';
-    
-    var html = '<div style="display:flex;flex-direction:column;gap:12px;padding:15px;">';
-    
-    if (type === 'slot') {
-        html += '<label>Niveau du sort :';
-        html += '<select id="res-level">';
-        for (var i = 1; i <= 9; i++) {
-            html += '<option value="' + i + '">Niveau ' + i + '</option>';
-        }
-        html += '</select></label>';
-        html += '<label>Nombre d\'emplacements :';
-        html += '<input type="number" id="res-max" value="2" min="1" max="10"></label>';
-    } else {
-        html += '<label>Nom :';
-        html += '<input type="text" id="res-name" placeholder="Ex: Rage, Inspiration bardique..."></label>';
-        html += '<label>Utilisations max :';
-        html += '<input type="number" id="res-max" value="3" min="1" max="99"></label>';
-        html += '<label>Récupération :';
-        html += '<select id="res-recharge">';
-        html += '<option value="long_rest">Repos long</option>';
-        html += '<option value="short_rest">Repos court</option>';
-        html += '<option value="dawn">À l\'aube</option>';
-        html += '<option value="manual">Manuel</option>';
-        html += '</select></label>';
-    }
-    
-    html += '<button class="btn-primary" onclick="confirmAddResource(\'' + adventurerId + '\',\'' + type + '\')">Ajouter</button>';
-    html += '</div>';
-    
-    // Utilise ton système de modale existant :
-    showModal(title, html);
-}
-
-/**
- * Confirme l'ajout de ressource depuis la modale.
- */
-function confirmAddResource(adventurerId, type) {
-    var data = { type: type };
-    
-    if (type === 'slot') {
-        var levelEl = document.getElementById('res-level');
-        var maxEl = document.getElementById('res-max');
-        data.name = 'Sort Niv. ' + (levelEl ? levelEl.value : '1');
-        data.level = parseInt(levelEl ? levelEl.value : '1', 10);
-        data.max = parseInt(maxEl ? maxEl.value : '2', 10);
-        data.recharge = 'long_rest';
-    } else {
-        var nameEl = document.getElementById('res-name');
-        var maxEl2 = document.getElementById('res-max');
-        var rechargeEl = document.getElementById('res-recharge');
-        data.name = nameEl ? nameEl.value : 'Ressource';
-        data.max = parseInt(maxEl2 ? maxEl2.value : '3', 10);
-        data.recharge = rechargeEl ? rechargeEl.value : 'long_rest';
-    }
-    
-    addResource(adventurerId, data);
-    closeModal(); // Utilise ta fonction de fermeture de modale
-}
-```
-
-### HTML à ajouter dans l'onglet Résumé
-
-Dans le template HTML de l'onglet Résumé de chaque aventurier, ajouter :
-```html
-<div id="resources-panel" class="resources-panel">
-    <!-- Rendu dynamiquement par renderResourcesPanel() -->
-    <p style="opacity:0.6;">Chargement des ressources...</p>
-</div>
-```
-
-Et appeler `renderResourcesPanel(adventurerId)` quand l'onglet Résumé s'affiche.
-
-### Vérifier
-- Ouvrir un aventurier → onglet Résumé → section Ressources visible
-- Ajouter un emplacement de sort Niv. 3 (2 emplacements) → cases cochables
-- Ajouter "Rage" (3 utilisations, repos long) → boutons +/- fonctionnels
-- Cliquer Repos court → seules les ressources "repos court" se rechargent
-- Cliquer Repos long → tout se recharge sauf "manuel"
-- Recharger la page → les ressources sont persistées
-
----
-
-## Ordre d'application recommandé
-
-1. ~~**Patch 1** (fusion banque/trésorerie)~~ — **FAIT**
-2. **Patch 2a** (format unifié) — c'est la base pour tout le reste
-3. **Patch 2b** (drag & drop) — corrige les artefacts
-4. **Patch 4** (ressources) — fonctionnalité indépendante
-5. **Patch 3** (bestiaire) — fonctionnalité indépendante
-
-Après chaque patch : `node --check` sur le JS modifié !
+1. Vérifier dans `data-store.js` ce qui est déjà déclaré avant d'ajouter dans `utils.js`
+2. `node --check` sur chaque fichier modifié avant de tester dans le navigateur
+3. Ne pas imbriquer les template literals
+4. Toujours tester en `file://` (pas besoin de serveur local)
