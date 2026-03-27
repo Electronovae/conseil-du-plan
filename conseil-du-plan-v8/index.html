@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+<body>
 
 <!-- HEADER -->
 <header id="header">
@@ -24,18 +25,18 @@
       </div>
     </div>
     <nav>
-      <button class="nav-btn active" data-module="members"    onclick="switchModule('members',this)">⚔️ Aventuriers</button>
-      <button class="nav-btn"        data-module="inventory"  onclick="switchModule('inventory',this)">⚖️ Inventaire</button>
-      <button class="nav-btn"        data-module="adventure"  onclick="switchModule('adventure',this)">📖 Aventure</button>
-      <button class="nav-btn"        data-module="battlemap"  onclick="switchModule('battlemap',this)">🗺️ Battlemaps</button>
-      <button class="nav-btn"        data-module="media"      onclick="switchModule('media',this)">🎵 Médias</button>
-      <button class="nav-btn"        data-module="bestiary"   onclick="switchModule('bestiary',this)">🐉 Bestiaire</button>
+      <button class="nav-btn active" data-module="members" onclick="switchModule('members',this)">⚔️ Aventuriers</button>
+      <button class="nav-btn" data-module="inventory" onclick="switchModule('inventory',this)">⚖️ Inventaire</button>
+      <button class="nav-btn" data-module="adventure" onclick="switchModule('adventure',this)">📖 Aventure</button>
+      <button class="nav-btn" data-module="battlemap" onclick="switchModule('battlemap',this)">🗺️ Battlemaps</button>
+      <button class="nav-btn" data-module="media" onclick="switchModule('media',this)">🎵 Médias</button>
+      <button class="nav-btn" data-module="bestiary" onclick="switchModule('bestiary',this)">🐉 Bestiaire</button>
       <button class="nav-btn" onclick="openPlanesModal()" style="font-size:11px" title="Gérer les noms de plans">🌀 Plans</button>
     </nav>
     <div id="stats">
       <div class="stat"><div class="stat-v" id="stat-members" style="color:var(--green)">0</div><div class="stat-l">Membres</div></div>
-      <div class="stat"><div class="stat-v" id="stat-items"   style="color:var(--gold)">0 PO</div><div class="stat-l">Richesse PO</div></div>
-      <div class="stat"><div class="stat-v" id="stat-logs"    style="color:var(--blue)">0</div><div class="stat-l">Aventures</div></div>
+      <div class="stat"><div class="stat-v" id="stat-items" style="color:var(--gold)">0 PO</div><div class="stat-l">Richesse PO</div></div>
+      <div class="stat"><div class="stat-v" id="stat-logs" style="color:var(--blue)">0</div><div class="stat-l">Aventures</div></div>
       <div style="display:flex;flex-direction:column;gap:3px;border-left:1px solid var(--border);padding-left:16px">
         <button class="btn btn-ghost btn-xs" onclick="exportData()" title="Exporter toutes les données en JSON" style="font-size:10px;white-space:nowrap">💾 Exporter</button>
         <button class="btn btn-ghost btn-xs" onclick="importData()" title="Importer un fichier de sauvegarde JSON" style="font-size:10px;white-space:nowrap">📂 Importer</button>
@@ -47,77 +48,44 @@
 </header>
 
 <main id="main">
-  <div id="module-members"   class="module"></div>
+  <div id="module-members" class="module"></div>
   <div id="module-inventory" class="module" style="display:none"></div>
   <div id="module-battlemap" class="module" style="display:none"></div>
-  <div id="module-media"     class="module" style="display:none"></div>
+  <div id="module-media" class="module" style="display:none"></div>
   <div id="module-adventure" class="module" style="display:none"></div>
-  <div id="module-bestiary"  class="module" style="display:none"></div>
+  <div id="module-bestiary" class="module" style="display:none"></div>
 </main>
 
 <!-- MODAL CONTAINER -->
 <div id="modal-container"></div>
 <div id="toast"></div>
 
-<!-- Div d'impression (généré par generatePrintSheet, caché hors impression) -->
-<div id="print-sheet" style="display:none">
-  <div id="print-sheet-content"></div>
-</div>
 
-    <!--
-    ================================================================
-    ORDRE DE CHARGEMENT DES SCRIPTS — CRITIQUE
-    ================================================================
-    1. constants.js     — constantes globales (STORE_KEY, listes…)
-    2. data-store.js    — données par défaut + DB initial
-    3. db.js            — save(), load(), hydrate(), helpers inline
-    4. toast / modal / app — UI de base
-    5. utils.js         — helpers + [Patch 2a] normalizeItem()
-                                   + [Patch 2b] DragDrop
-    6. modules aventuriers (ordre fixe — dépendances entre eux)
-    7. member-resources.js — [Patch 4] APRÈS member-save.js,
-                             AVANT inventaire.js
-                             (dépend de renderMemberSummary de aventuriers.js)
-    8. inventaire.js    — module inventaire
-    9. autres modules…
-    10. spells-aidedd.js — APRÈS bestiaire.js (qui l'utilise)
-    11. export-import.js — APRÈS tous les modules
-    12. init.js         — DERNIER : lance le premier rendu
-    ================================================================
-    -->
-
-    <!-- ── CORE ── -->
+    <!-- JS Modules (ordre important !) -->
     <script src="js/core/constants.js"></script>
     <script src="js/data/data-store.js"></script>
     <script src="js/core/db.js"></script>
     <script src="js/core/toast.js"></script>
     <script src="js/core/modal.js"></script>
     <script src="js/core/app.js"></script>
-    <script src="js/core/utils.js"></script><!-- Patch 2a + 2b -->
-
-    <!-- ── MODULES AVENTURIERS ── -->
+    <script src="js/core/utils.js"></script>
     <script src="js/modules/aventuriers.js"></script>
     <script src="js/modules/member-modal.js"></script>
     <script src="js/modules/member-spells.js"></script>
     <script src="js/modules/member-inventory.js"></script>
     <script src="js/modules/member-save.js"></script>
-    <script src="js/modules/member-resources.js"></script><!-- Patch 4 — après member-save, avant inventaire -->
-
-    <!-- ── AUTRES MODULES ── -->
+    <script src="js/modules/member-resources.js"></script>
     <script src="js/modules/inventaire.js"></script>
     <script src="js/modules/journal.js"></script>
     <script src="js/modules/pnj.js"></script>
     <script src="js/modules/battlemaps.js"></script>
     <script src="js/modules/medias.js"></script>
     <script src="js/modules/bestiaire.js"></script>
-    <script src="js/data/spells-aidedd.js"></script><!-- après bestiaire -->
+    <script src="js/data/spells-aidedd.js"></script>
     <script src="js/modules/tresors.js"></script>
     <script src="js/modules/chasse.js"></script>
     <script src="js/modules/aventure.js"></script>
-
-    <!-- ── FINALISATION ── -->
     <script src="js/core/export-import.js"></script>
-    <script src="js/core/init.js"></script><!-- DOIT être le dernier -->
-
+    <script src="js/core/init.js"></script>
 </body>
 </html>
