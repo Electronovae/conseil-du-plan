@@ -9,50 +9,22 @@ Chaque patch ci-dessous indique :
 
 ---
 
-## PATCH 1 — Fusion "Fond Commun" dans Trésorerie
+## ✅ PATCH 1 — Fusion "Banque de Guilde" dans Trésorerie — APPLIQUÉ
 
-### Problème
-L'onglet "Fond commun" dans "Banque de guilde" fait doublon avec la trésorerie.
+### Ce qui a été fait
+Dans `js/modules/inventaire.js`, la fonction `renderWealthPanel()` a été modifiée :
+- Le bloc "🏦 Banque de la Guilde" (fonds communs PP/PO/PA/PC + total `guildBankPO`) a été **supprimé de l'affichage**.
+- La liste des dépôts individuels des membres (`m.bank`) a été **conservée**, renommée
+  "🎒 Dépôts des Aventuriers" et intégrée directement dans le panneau Richesse.
+- `DB.guildBank` n'est **pas supprimé des données** (localStorage) pour ne pas casser l'export/import existant.
 
-### Solution
-Supprimer l'onglet "Fond commun" comme onglet séparé et intégrer son contenu
-directement dans la vue Trésorerie, comme une section "Fond commun de guilde".
-
-### Étapes
-
-**1a.** Supprimer le bouton d'onglet "Fond commun" dans les tabs de la banque.
-CHERCHER le HTML du bouton de tab (ressemble à) :
-```html
-<button class="tab-btn" onclick="showBankTab('fond-commun')">Fond commun</button>
+### Si tu veux annuler
+Rechercher le commentaire dans `inventaire.js` :
+```javascript
+// NOTE : les fonds communs de la banque (DB.guildBank) sont supprimés de
+//        l'affichage car ils faisaient doublon avec la trésorerie ci-dessus.
 ```
-→ SUPPRIMER cette ligne.
-
-**1b.** Déplacer le contenu du div fond-commun dans la section trésorerie.
-CHERCHER :
-```html
-<div id="tab-fond-commun" class="tab-content">
-```
-→ Couper TOUT le contenu de ce div.
-→ Le coller à la fin du div `tab-tresorerie`, dans une section séparée :
-```html
-<!-- Section Fond Commun (intégrée à la trésorerie) -->
-<div class="fond-commun-section" style="margin-top:20px; border-top:2px solid var(--border); padding-top:15px;">
-    <h3 style="display:flex; align-items:center; gap:10px;">
-        <span>💰</span> Fond Commun de Guilde
-    </h3>
-    <!-- COLLER ICI le contenu de l'ancien tab fond-commun -->
-</div>
-```
-
-**1c.** Supprimer le div `tab-fond-commun` vide restant.
-
-**1d.** Dans le JS, chercher la fonction `showBankTab` et retirer 'fond-commun'
-des onglets gérés (ou supprimer la fonction si elle ne sert plus qu'à ça).
-
-### Vérifier
-- La trésorerie affiche le solde + le fond commun dans la même vue
-- Les opérations de versement/retrait du fond commun fonctionnent toujours
-- Il n'y a plus d'onglet "Fond commun" séparé
+Et réintégrer le bloc HTML de la banque à cet endroit.
 
 ---
 
@@ -701,10 +673,10 @@ Et appeler `renderResourcesPanel(adventurerId)` quand l'onglet Résumé s'affich
 
 ## Ordre d'application recommandé
 
-1. **Patch 2a** (format unifié) — c'est la base pour tout le reste
-2. **Patch 2b** (drag & drop) — corrige les artefacts
-3. **Patch 4** (ressources) — fonctionnalité indépendante
-4. **Patch 3** (bestiaire) — fonctionnalité indépendante
-5. **Patch 1** (fusion fond commun) — refactoring UI
+1. ~~**Patch 1** (fusion banque/trésorerie)~~ — **FAIT**
+2. **Patch 2a** (format unifié) — c'est la base pour tout le reste
+3. **Patch 2b** (drag & drop) — corrige les artefacts
+4. **Patch 4** (ressources) — fonctionnalité indépendante
+5. **Patch 3** (bestiaire) — fonctionnalité indépendante
 
-Après chaque patch : `node --check` sur le JS extrait !
+Après chaque patch : `node --check` sur le JS modifié !

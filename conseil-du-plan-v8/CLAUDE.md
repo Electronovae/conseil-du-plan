@@ -107,19 +107,41 @@ Ouvrir `index.html` directement (protocole file://) — tout doit marcher.
 
 ## Bugs connus / Améliorations prévues (PATCHES.md)
 
-4 patches sont documentés dans PATCHES.md :
-1. **Fusion Fond Commun → Trésorerie** — supprimer l'onglet doublon
+3 patches restent à appliquer (le Patch 1 a été partiellement résolu, voir ci-dessous) :
+1. ~~**Fusion Fond Commun → Trésorerie**~~ — **FAIT** (voir section ci-dessous)
 2. **Format objet unifié + Drag & Drop** — normalizeItem() + DragDrop sans artefacts
 3. **Import Bestiaire : Langues et FP** — parseChallengeRating(), parseMonsterLanguages()
 4. **Ressources Aventurier** — système complet pour l'onglet Résumé (slots de sorts, capacités, repos)
 
-Ordre recommandé : 2a → 2b → 4 → 3 → 1
+Ordre recommandé : 2a → 2b → 4 → 3
+
+## Ce qui a été modifié — inventaire.js (V8.0)
+
+### Suppression de la section "Banque de Guilde"
+Dans `renderWealthPanel()`, le bloc "🏦 Banque de la Guilde" a été supprimé car il faisait
+doublon avec la section "💰 Trésorerie de la Guilde". Concrètement :
+- Le titre et le sous-total `guildBankPO` affiché en header ont été retirés
+- La grille des fonds communs (PP/PO/PA/PC de `DB.guildBank`) a été supprimée de l'affichage
+- **`DB.guildBank` n'est pas supprimé des données** — la structure persiste en localStorage
+  pour ne pas casser l'import/export. Seul l'affichage est retiré.
+
+### Conservation des dépôts individuels
+La section listant les dépôts par membre (`m.bank`) est conservée, renommée
+"🎒 Dépôts des Aventuriers" et intégrée directement dans le panneau Richesse.
+Elle reste masquée si aucun membre n'a de dépôt.
+
+### Commentaires ajoutés
+Tout `inventaire.js` a été commenté :
+- Séparateurs `// ===` pour naviguer entre les grandes sections
+- JSDoc sur toutes les fonctions publiques
+- Commentaires inline sur les blocs logiques non évidents (seed marchand, migrations, etc.)
 
 ## Système d'onglets inventaire
 
 - `invTab` : 'guild' | 'member'
 - `invGuildTab` : 'items' | 'wealth' | 'market' | 'merchants' | 'invest' | 'chests'
-- `guildBank` : {pp, po, pa, pc} — trésorerie de la guilde
+- `DB.guildBank` : {pp, po, pa, pc} — données conservées mais non affichées (doublon trésorerie)
+- `DB.wealth` : {pp, po, pa, pc, lingots} — trésorerie principale affichée dans l'onglet Richesse
 - `guildChests` : coffres nommés avec inventaire propre
 
 ## Thème clair/sombre
