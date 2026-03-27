@@ -1,7 +1,21 @@
 /**
  * MODULE BESTIAIRE — code (sans données)
  * Extrait de V7_6.html lignes 7350-7367
+ *
+ * DONNÉES EXTERNES :
+ *   Les monstres AideDD sont dans /data/bestiary.json (fichier externe, pas dans ce script).
+ *   Structure d'un objet monstre (tous les champs optionnels sauf 'name') :
+ *   {
+ *     name, icon, size, type, alignment, cr, hp, ac, speed,
+ *     str, dex, con, intel, wis, cha,
+ *     saves, skills, resistances, dmg_immunities, cond_immunities,
+ *     senses, languages, traits,
+ *     actionsList: [{ name, type, atk, dmg, desc }],
+ *     actions,        // fallback texte libre si actionsList absent
+ *     bonus_actions, reactions, legendary
+ *   }
  */
+
 // ================================================================
 // MODULE BESTIAIRE
 // ================================================================
@@ -18,50 +32,131 @@ const CREATURE_TYPES = ['Aberration','Bête','Céleste','Construction','Dragon',
 // ALIGNMENTS already defined above
 
 // ══════════════════════════════════════════════════════════════
+// IMPORT DEPUIS bestiary.json (fetch externe)
+// ══════════════════════════════════════════════════════════════
 
-var AIDEDD_MONSTERS = []
-  // Extrait de https://www.aidedd.org/dnd/monstres.php (962 monstres, juin 2024) PS POUR CLAUDE : la var AIDEDD_MONSTERS a été effacée, j'aimerais un .json externe à la place, avec dans ce code une fonction d'import qui ajoute les monstres à notre bestiaire (en évitant les doublons par nom). Merci ! (et aussi une ligne "exemple" du json pour pas avoir à l'ouvrir pour voir la structure)
-  // Format adapté pour correspondre à notre structure de données (voir importAideddMonsters ci-dessous)]
 /**
- * MODULE BESTIAIRE — suite (render, search, etc.)
- * Extrait de V7_6.html lignes 7369-7806
+ * Charge bestiary.json depuis le serveur et importe les monstres.
+ * Fonctionne en http:// et https://, PAS en file:// (restriction navigateur).
+ * Pour file://, utiliser importAideddMonstersFromFile() à la place.
  */
-
 function importAideddMonsters() {
-  if(!confirm('Importer les ' + AIDEDD_MONSTERS.length + ' monstres du bestiaire AideDD ?\nLes monstres ayant déjà le même nom seront ignorés.')) return;
-  if(!DB.bestiary) DB.bestiary = [];
+  fetch('data/bestiary.json')
+    .then(function(response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    })
+    .then(function(monsters) {
+      _doImportMonsters(monsters);
+    })
+    .catch(function(err) {
+      // En cas d'échec (file://, CORS, fichier manquant), propose l'import manuel
+      console.warn('fetch bestiary.json échoué :', err);
+      toast('⚠️ Impossible de charger bestiary.json automatiquement. Utilisez le bouton "Importer un fichier JSON" à la place.');
+      _showImportFileDialog();
+    });
+}
+
+/**
+ * Ouvre un sélecteur de fichier pour importer bestiary.json manuellement.
+ * Utile quand l'app tourne en file://.
+ */
+function importAideddMonstersFromFile() {
+  var input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var monsters = JSON.parse(ev.target.result);
+        // Filtre les entrées de documentation (celles qui ont un champ _comment)
+        monsters = monsters.filter(function(m) { return !m._comment && m.name; });
+        _doImportMonsters(monsters);
+      } catch(err) {
+        toast('❌ Fichier JSON invalide : ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+/**
+ * Affiche la modale de choix d'import (fetch auto vs fichier manuel).
+ */
+function _showImportFileDialog() {
+  var html = '<div class="modal" onclick="event.stopPropagation()" style="max-width:400px">'
+    + '<div class="modal-header"><span class="modal-title">⬇️ Import Bestiaire AideDD</span>'
+    + '<button class="modal-close" onclick="closeModal()">✕</button></div>'
+    + '<div class="modal-body" style="display:flex;flex-direction:column;gap:12px;padding:20px">'
+    + '<p style="color:var(--muted);font-size:13px;margin:0">'
+    + 'Choisissez comment importer le fichier <code>bestiary.json</code> :'
+    + '</p>'
+    + '<button class="btn btn-primary" onclick="closeModal();importAideddMonstersFromFile()">'
+    + '📂 Sélectionner bestiary.json sur mon disque'
+    + '</button>'
+    + '<p style="color:var(--dim);font-size:11px;margin:0;text-align:center">'
+    + 'Le fichier bestiary.json doit avoir la même structure que l\'exemple fourni avec l\'appli.'
+    + '</p>'
+    + '</div></div>';
+  openModal(html);
+}
+
+/**
+ * Importe un tableau de monstres dans DB.bestiary (déduplication par nom).
+ * @param {Array} monsters - tableau d'objets monstres
+ */
+function _doImportMonsters(monsters) {
+  if (!Array.isArray(monsters) || monsters.length === 0) {
+    toast('⚠️ Aucun monstre trouvé dans le fichier.');
+    return;
+  }
+  // Filtre les entrées de documentation
+  monsters = monsters.filter(function(m) { return !m._comment && m.name; });
+
+  if (!confirm('Importer ' + monsters.length + ' monstres dans le bestiaire ?\nLes monstres ayant déjà le même nom seront ignorés.')) return;
+
+  if (!DB.bestiary) DB.bestiary = [];
   var existing = {};
-  DB.bestiary.forEach(function(b){ existing[b.name.toLowerCase()] = true; });
+  DB.bestiary.forEach(function(b) { existing[b.name.toLowerCase()] = true; });
+
   var added = 0;
-  AIDEDD_MONSTERS.forEach(function(m) {
-    if(existing[m.name.toLowerCase()]) return;
-    var strNum = typeof m.str === 'number' ? m.str : 10;
-    var dexNum = typeof m.dex === 'number' ? m.dex : 10;
-    var conNum = typeof m.con === 'number' ? m.con : 10;
+  monsters.forEach(function(m) {
+    if (existing[m.name.toLowerCase()]) return;
+    var strNum = typeof m.str   === 'number' ? m.str   : 10;
+    var dexNum = typeof m.dex   === 'number' ? m.dex   : 10;
+    var conNum = typeof m.con   === 'number' ? m.con   : 10;
     var intNum = typeof m.intel === 'number' ? m.intel : 10;
-    var wisNum = typeof m.wis === 'number' ? m.wis : 10;
-    var chaNum = typeof m.cha === 'number' ? m.cha : 10;
+    var wisNum = typeof m.wis   === 'number' ? m.wis   : 10;
+    var chaNum = typeof m.cha   === 'number' ? m.cha   : 10;
     DB.bestiary.push({
-      id: uid(), name: m.name, icon: m.icon, image: null,
-      size: m.size||'', type: m.type||'', alignment: m.alignment||'',
-      cr: m.cr||'0', hp: m.hp||'', ac: m.ac||'', speed: m.speed||'',
-      stats: {str:strNum, dex:dexNum, con:conNum, int:intNum, wis:wisNum, cha:chaNum},
-      saves: m.saves||'', skills: m.skills||'', senses: m.senses||'',
-      languages: m.languages||'', resistances: m.resistances||'',
-      dmg_immunities: m.dmg_immunities||'', cond_immunities: m.cond_immunities||'',
-      traits: m.traits||'',
-      actions: m.actions||'',
-      actionsList: m.actionsList||[],
-      bonus_actions: m.bonus_actions||'',
-      reactions: m.reactions||'',
-      legendary: m.legendary||'',
+      id: uid(), name: m.name, icon: m.icon || '👾', image: null,
+      size: m.size || '', type: m.type || '', alignment: m.alignment || '',
+      cr: m.cr || '0', hp: m.hp || '', ac: m.ac || '', speed: m.speed || '',
+      stats: { str: strNum, dex: dexNum, con: conNum, int: intNum, wis: wisNum, cha: chaNum },
+      saves: m.saves || '', skills: m.skills || '', senses: m.senses || '',
+      languages: m.languages || '', resistances: m.resistances || '',
+      dmg_immunities: m.dmg_immunities || '', cond_immunities: m.cond_immunities || '',
+      traits: m.traits || '',
+      actions: m.actions || '',
+      actionsList: Array.isArray(m.actionsList) ? m.actionsList : [],
+      bonus_actions: m.bonus_actions || '',
+      reactions: m.reactions || '',
+      legendary: m.legendary || '',
       dmNotes: '', kills: 0, source: 'aidedd'
     });
     added++;
   });
-  save(); renderBestiary();
-  toast('✅ ' + added + ' monstres importés ! (' + (AIDEDD_MONSTERS.length - added) + ' déjà présents)');
+
+  save();
+  renderBestiary();
+  toast('✅ ' + added + ' monstres importés ! (' + (monsters.length - added) + ' déjà présents)');
 }
+
+// ══════════════════════════════════════════════════════════════
 
 function clearBestiary() {
   if(!confirm('⚠️ Supprimer TOUTES les créatures du bestiaire ?\nCette action est irréversible.')) return;
@@ -83,7 +178,7 @@ function renderBestiary(){
     <button onclick="beastViewMode=beastViewMode==='detail'?'grid':'detail';renderBestiary()" class="btn btn-ghost btn-sm">
       ${beastViewMode==='detail'?'⊞ Grille':'☰ Détail'}
     </button>
-    <button class="btn btn-outline btn-sm" onclick="importAideddMonsters()" title="Importer 962 monstres AideDD">⬇️ Import AideDD</button>
+    <button class="btn btn-outline btn-sm" onclick="importAideddMonsters()" title="Importer les monstres depuis data/bestiary.json">⬇️ Import AideDD</button>
     <button class="btn btn-danger btn-sm" onclick="clearBestiary()" title="Supprimer toutes les créatures">🗑️ Vider</button>
     <button class="btn btn-primary" onclick="openBeastModal()">+ Ajouter une créature</button>
   </div>
@@ -460,7 +555,3 @@ function deleteBeast(id){
   selectedBeastId=DB.bestiary[0]?.id||null;
   save(); renderBestiary();
 }
-
-
-
-

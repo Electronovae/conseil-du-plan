@@ -1,0 +1,164 @@
+[
+  {
+    "_comment": "Structure d'un monstre AideDD — tous les champs sont optionnels sauf 'name'",
+    "_fields": {
+      "name": "string — nom du monstre (clé de déduplication)",
+      "icon": "string — emoji représentatif",
+      "size": "string — Infime | Très petit | Petit | Moyen | Grand | Très grand | Gigantesque",
+      "type": "string — Aberration | Bête | Céleste | Construction | Dragon | Élémentaire | Fée | Fiélon | Géant | Humanoïde | Mort-vivant | Plante | Vase | Monstruosité",
+      "alignment": "string — ex: Neutre mauvais",
+      "cr": "string — FP : '1/8', '1/4', '1/2', '1' ... '30'",
+      "hp": "string — ex: '52 (8d10+8)'",
+      "ac": "string — ex: '15 (armure de cuir clouté)'",
+      "speed": "string — ex: '9m, vol 18m'",
+      "str": "number", "dex": "number", "con": "number",
+      "intel": "number", "wis": "number", "cha": "number",
+      "saves": "string — ex: 'For +5, Con +3'",
+      "skills": "string — ex: 'Perception +4, Discrétion +6'",
+      "resistances": "string — ex: 'contondant, tranchant, perforant (armes non magiques)'",
+      "dmg_immunities": "string — ex: 'feu, poison'",
+      "cond_immunities": "string — ex: 'charmé, empoisonné'",
+      "senses": "string — ex: 'vision dans le noir 18m, Perception passive 14'",
+      "languages": "string — ex: 'commun, draconique'",
+      "traits": "string — texte libre des traits passifs",
+      "actions": "string — texte libre (fallback si actionsList absent)",
+      "actionsList": "array — voir structure ci-dessous (préféré à actions)",
+      "bonus_actions": "string",
+      "reactions": "string",
+      "legendary": "string — actions légendaires"
+    }
+  },
+  {
+    "name": "Gobelin",
+    "icon": "👺",
+    "size": "Petit",
+    "type": "Humanoïde",
+    "alignment": "Neutre mauvais",
+    "cr": "1/4",
+    "hp": "7 (2d6)",
+    "ac": "15 (armure de cuir, bouclier)",
+    "speed": "9m",
+    "str": 8, "dex": 14, "con": 10, "intel": 10, "wis": 8, "cha": 8,
+    "skills": "Discrétion +6",
+    "senses": "vision dans le noir 18m, Perception passive 9",
+    "languages": "commun, gobelin",
+    "traits": "Fuite agile. Le gobelin peut se Désengager ou se Cacher en action bonus à chacun de ses tours.",
+    "actionsList": [
+      {
+        "name": "Cimeterre",
+        "type": "mêlée",
+        "atk": "4",
+        "dmg": "1d6+2 (tranchant)",
+        "desc": "Attaque avec une arme de mêlée : +4 pour toucher, allonge 1,5m, une cible."
+      },
+      {
+        "name": "Arc court",
+        "type": "distance",
+        "atk": "4",
+        "dmg": "1d6+2 (perforant)",
+        "desc": "Attaque avec une arme à distance : +4 pour toucher, portée 24/96m, une cible."
+      }
+    ]
+  },
+  {
+    "name": "Loup",
+    "icon": "🐺",
+    "size": "Moyen",
+    "type": "Bête",
+    "alignment": "Sans alignement",
+    "cr": "1/4",
+    "hp": "11 (2d8+2)",
+    "ac": "13 (armure naturelle)",
+    "speed": "12m",
+    "str": 12, "dex": 15, "con": 12, "intel": 3, "wis": 12, "cha": 6,
+    "skills": "Perception +3, Discrétion +4",
+    "senses": "Perception passive 13",
+    "languages": "",
+    "traits": "Tactique de meute. Le loup bénéficie de l'avantage aux jets d'attaque contre une créature si au moins un allié non neutralisé du loup se situe à 1,5m de la créature.\nOuïe et odorat aiguisés. Le loup bénéficie de l'avantage aux jets de Sagesse (Perception) basés sur l'ouïe ou l'odorat.",
+    "actionsList": [
+      {
+        "name": "Morsure",
+        "type": "mêlée",
+        "atk": "4",
+        "dmg": "2d4+2 (perforant)",
+        "desc": "Si la cible est une créature, elle doit réussir un jet de sauvegarde de Force DD 11 ou être jetée à terre (renversée)."
+      }
+    ]
+  },
+  {
+    "name": "Zombie",
+    "icon": "🧟",
+    "size": "Moyen",
+    "type": "Mort-vivant",
+    "alignment": "Neutre mauvais",
+    "cr": "1/4",
+    "hp": "22 (3d8+9)",
+    "ac": "8",
+    "speed": "6m",
+    "str": 13, "dex": 6, "con": 16, "intel": 3, "wis": 6, "cha": 5,
+    "saves": "Sag +0",
+    "dmg_immunities": "poison",
+    "cond_immunities": "empoisonné",
+    "senses": "vision dans le noir 18m, Perception passive 8",
+    "languages": "comprend les langues connues en vie mais ne peut pas parler",
+    "traits": "Entêtement du mort-vivant. Si des dégâts réduisent le zombie à 0 PV, il effectue un jet de sauvegarde de Constitution DD 5 + les dégâts reçus, à moins que les dégâts soient radiants ou d'une source de critique. En cas de réussite, le zombie tombe à 1 PV.",
+    "actionsList": [
+      {
+        "name": "Slam",
+        "type": "mêlée",
+        "atk": "3",
+        "dmg": "1d6+1 (contondant)",
+        "desc": "Attaque avec une arme de mêlée : +3 pour toucher, allonge 1,5m, une cible."
+      }
+    ]
+  },
+  {
+    "name": "Dragon rouge adulte",
+    "icon": "🐉",
+    "size": "Très grand",
+    "type": "Dragon",
+    "alignment": "Chaotique mauvais",
+    "cr": "17",
+    "hp": "256 (19d12+133)",
+    "ac": "19 (armure naturelle)",
+    "speed": "12m, vol 24m",
+    "str": 27, "dex": 10, "con": 25, "intel": 16, "wis": 13, "cha": 21,
+    "saves": "For +14, Con +13, Sag +7, Cha +11",
+    "skills": "Perception +13, Discrétion +6",
+    "dmg_immunities": "feu",
+    "senses": "vision aveugle 9m, vision dans le noir 36m, Perception passive 23",
+    "languages": "commun, draconique",
+    "traits": "Résistance légendaire (3/jour). Si le dragon rate un jet de sauvegarde, il peut choisir de le réussir à la place.",
+    "actionsList": [
+      {
+        "name": "Attaques multiples",
+        "type": "autre",
+        "atk": "",
+        "dmg": "",
+        "desc": "Le dragon effectue trois attaques : une de morsure et deux de griffe."
+      },
+      {
+        "name": "Morsure",
+        "type": "mêlée",
+        "atk": "14",
+        "dmg": "2d10+8 (perforant) + 4d6 (feu)",
+        "desc": "Attaque avec une arme de mêlée : +14 pour toucher, allonge 3m, une cible."
+      },
+      {
+        "name": "Griffe",
+        "type": "mêlée",
+        "atk": "14",
+        "dmg": "2d6+8 (tranchant)",
+        "desc": "Attaque avec une arme de mêlée : +14 pour toucher, allonge 1,5m, une cible."
+      },
+      {
+        "name": "Souffle de feu (Recharge 5-6)",
+        "type": "autre",
+        "atk": "",
+        "dmg": "18d6 (feu)",
+        "desc": "Le dragon crache du feu dans un cône de 18m. Chaque créature dans la zone doit réussir un jet de sauvegarde de Dextérité DD 21, subissant 63 (18d6) dégâts de feu en cas d'échec, ou la moitié en cas de réussite."
+      }
+    ],
+    "legendary": "Le dragon peut effectuer 3 actions légendaires parmi les choix suivants. Il ne peut en effectuer qu'une seule à la fois et uniquement à la fin du tour d'une autre créature.\n\nDétection. Le dragon effectue un test de Perception.\nQueue. Le dragon effectue une attaque de Queue.\nAiles (coûte 2 actions). Le dragon bat des ailes. Chaque créature à 3m du dragon doit réussir un jet de sauvegarde de Dextérité DD 22 ou subir 2d6+8 dégâts contondants et être jetée à terre."
+  }
+]
