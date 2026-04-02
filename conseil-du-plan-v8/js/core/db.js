@@ -1,20 +1,22 @@
 /**
  * STOCKAGE HYBRIDE — localStorage + IndexedDB
  * Extrait de V7_6.html lignes 883-1397
+ *
+ * CORRECTIF v8.2 :
+ *   Toutes les fonctions qui cherchent un membre ou une ressource par ID
+ *   utilisaient === (comparaison stricte). Les IDs peuvent arriver comme
+ *   string depuis le HTML onclick alors qu'ils sont stockés comme number
+ *   (uid() retourne un number). Corrigé en forçant +memberId / +resourceId.
  */
+
 // ================================================================
 // STOCKAGE HYBRIDE : texte → localStorage | blobs → IndexedDB
 // ================================================================
-// DB en mémoire contient toujours les blobs (base64) pour l'affichage.
-// save() = écrit le texte dans localStorage + les blobs dans IndexedDB.
-// Les blobs sont des champs identifiés par leur clé : "m_av_<id>", "m_pdf_<id>",
-// "bm_bg_<id>", "med_<id>".
-
 const IDB_NAME  = 'cdp_blobs';
 const IDB_STORE = 'blobs';
 const IDB_VER   = 1;
 
-let _idb = null; // handle IndexedDB ouvert
+let _idb = null;
 
 function openIDB(){
   return new Promise((res,rej)=>{
@@ -55,9 +57,8 @@ function idbGetAll(){
   })).catch(()=>({}));
 }
 
-// Extrait les blobs de DB et retourne {text:DB_sans_blobs, blobs:{key:data}}
 function _splitBlobs(db){
-  const d = JSON.parse(JSON.stringify(db)); // deep clone
+  const d = JSON.parse(JSON.stringify(db));
   const blobs = {};
   d.members.forEach(m=>{
     if(m.avatarImg){ blobs['m_av_'+m.id]=m.avatarImg; m.avatarImg='__blob__'; }
@@ -75,7 +76,6 @@ function _splitBlobs(db){
   return {text:d, blobs};
 }
 
-// Réinjecte les blobs dans un objet DB texte
 function _mergeBlobs(d, blobs){
   d.members.forEach(m=>{
     if(m.avatarImg==='__blob__') m.avatarImg=blobs['m_av_'+m.id]||null;
@@ -124,7 +124,6 @@ function migrateDB(parsed){
   });
   if(parsed.npcs) parsed.npcs.forEach(n=>{
     if(!n.avatarImg)n.avatarImg=null;
-    // V7.1: migrate single status string to statuses array
     if(!n.statuses){
       n.statuses = n.status ? [n.status] : ['vivant'];
       delete n.status;
@@ -150,35 +149,29 @@ function migrateDB(parsed){
   return parsed;
 }
 
-// Charge DB : texte depuis localStorage + blobs depuis IndexedDB
 let DB = (() => {
   try {
     const s = localStorage.getItem(STORE_KEY);
     if(s) {
       const parsed = JSON.parse(s);
-      // Les blobs seront chargés async après le boot via loadBlobsIntoDB()
       return migrateDB(parsed);
     }
   } catch(e){}
   return JSON.parse(JSON.stringify(DEFAULT));
 })();
 
-// Appelé après le boot pour réinjecter les blobs depuis IndexedDB
 async function loadBlobsIntoDB(){
   try {
     const blobs = await idbGetAll();
     if(!blobs || Object.keys(blobs).length===0) return;
     _mergeBlobs(DB, blobs);
-    // Rafraîchir l'affichage si nécessaire
     if(document.getElementById('member-detail')) renderMemberDetail();
     const mapCanvas=document.getElementById('map-canvas');
     if(mapCanvas) renderMapCanvas();
   } catch(e){ console.warn('loadBlobsIntoDB error',e); }
 }
 
-// save() : texte → localStorage | blobs → IndexedDB (async, non bloquant)
-
-// ── BASE D'ITEMS : toggle et rendu des résultats ───────────────
+// ── BASE D'ITEMS ─────────────────────────────────────────────
 function toggleItemDBPanel(){
   const panel = document.getElementById('item-db-panel');
   if(!panel) return;
@@ -187,7 +180,6 @@ function toggleItemDBPanel(){
   if(!visible) { renderItemDBResults(); }
 }
 
-// → Affiche les items de la DB correspondant à la recherche
 function renderItemDBResults(){
   const q   = document.getElementById('item-db-search')?.value||'';
   const cat = document.getElementById('item-db-cat')?.value||'';
@@ -212,7 +204,6 @@ function renderItemDBResults(){
   }).join('');
 }
 
-// → Remplit le formulaire de la modale avec les données de l'item importé
 function importItemFromDB(itemData){
   const item = typeof itemData === 'string' ? JSON.parse(itemData) : itemData;
   window._editItem.name        = item.name;
@@ -222,19 +213,15 @@ function importItemFromDB(itemData){
   window._editItem.emoji       = item.emoji||'';
   window._editItem.size        = item.size||1;
   if(item.bagBonus!==undefined) window._editItem.bagBonus = item.bagBonus;
-  // Refresh the form fields
   const modal = document.querySelector('.modal');
   if(modal){
     const nameInput = modal.querySelector('input[placeholder="Épée du Néant..."]');
     if(nameInput) nameInput.value = item.name;
   }
-  // Hide the panel after import
   const panel = document.getElementById('item-db-panel');
   if(panel) panel.style.display='none';
   toast('📦 '+item.name+' importé !');
-  // Full re-open to refresh form
   openInvModal(null, window._editItem.chestId||null);
-  // Patch back the imported data since openInvModal resets the item
   setTimeout(()=>{
     const m2 = document.querySelector('.modal');
     if(!m2) return;
@@ -243,10 +230,10 @@ function importItemFromDB(itemData){
   }, 50);
 }
 
-// ── MISE À JOUR INLINE DES CHAMPS MEMBRE (V6) ─────────────────
-// path : 'stats.str' | 'hp.current' | 'gold.po' | 'bank.po' | 'race' etc.
+// ── MISE À JOUR INLINE DES CHAMPS MEMBRE ─────────────────────
+// CORRECTIF v8.2 : +memberId pour forcer la coercion number
 function updateMemberField(memberId, path, value){
-  const m = DB.members.find(x=>x.id===memberId);
+  const m = DB.members.find(x=>x.id===+memberId);
   if(!m) return;
   const parts = path.split('.');
   if(parts.length===1){
@@ -260,27 +247,23 @@ function updateMemberField(memberId, path, value){
     m[parts[0]][parts[1]][parts[2]] = value;
   }
   save(); updateStats();
-  // Re-render seulement les panneaux affectés pour éviter de perdre le focus
-  // Pour les stats → recalcul des mods affiché via updateSummaryMods()
   _softRefreshSummary(memberId);
 }
 
-// → Refresh partiel du résumé sans perdre le focus sur un input actif
 function _softRefreshSummary(memberId){
-  const m = DB.members.find(x=>x.id===memberId);
+  const m = DB.members.find(x=>x.id===+memberId);
   if(!m) return;
   const container = document.getElementById('summary-panels-'+memberId);
   if(!container) return;
-  // Re-render complet du résumé seulement si aucun input n'est focused
   const active = document.activeElement;
-  if(active && container.contains(active)) return; // ne pas interrompre la saisie
+  if(active && container.contains(active)) return;
   const content = document.getElementById('member-detail-content');
   if(content && window._memberDetailTab===0) content.innerHTML = renderMemberSummary(m);
 }
 
-// → Toggle maîtrise d'un jet de sauvegarde
+// CORRECTIF v8.2 : +memberId, statKey reste string
 function toggleSaveProficiency(memberId, statKey){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
   if(!m.saveProficiencies) m.saveProficiencies=[];
   const idx=m.saveProficiencies.indexOf(statKey);
   if(idx>=0) m.saveProficiencies.splice(idx,1);
@@ -290,12 +273,11 @@ function toggleSaveProficiency(memberId, statKey){
   if(content&&window._memberDetailTab===0) content.innerHTML=renderMemberSummary(m);
 }
 
-// → Toggle maîtrise d'une compétence (clic simple)
+// CORRECTIF v8.2 : +memberId
 function toggleSkillProficiency(memberId, skillName){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
   if(!m.skillProficiencies) m.skillProficiencies=[];
   if(!m.skillExpertise) m.skillExpertise=[];
-  // Si expertise → passe à rien
   const expIdx=m.skillExpertise.indexOf(skillName);
   if(expIdx>=0){ m.skillExpertise.splice(expIdx,1); save(); }
   else {
@@ -308,15 +290,14 @@ function toggleSkillProficiency(memberId, skillName){
   if(content&&window._memberDetailTab===0) content.innerHTML=renderMemberSummary(m);
 }
 
-// → Toggle expertise d'une compétence (double-clic)
+// CORRECTIF v8.2 : +memberId
 function toggleSkillExpertise(memberId, skillName){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
   if(!m.skillProficiencies) m.skillProficiencies=[];
   if(!m.skillExpertise) m.skillExpertise=[];
   const expIdx=m.skillExpertise.indexOf(skillName);
   if(expIdx>=0){ m.skillExpertise.splice(expIdx,1); }
   else {
-    // S'assure que maîtrise est aussi là
     if(!m.skillProficiencies.includes(skillName)) m.skillProficiencies.push(skillName);
     m.skillExpertise.push(skillName);
   }
@@ -325,31 +306,33 @@ function toggleSkillExpertise(memberId, skillName){
   if(content&&window._memberDetailTab===0) content.innerHTML=renderMemberSummary(m);
 }
 
-// → Met à jour la valeur courante d'une ressource (+delta)
+// CORRECTIF v8.2 : +memberId ET +resourceId pour forcer la coercion number
+// C'est ici LE bug principal : resourceId arrivait comme string depuis le HTML
+// et était comparé avec === à un number => find() retournait undefined => rien ne se passait
 function updateResourceVal(memberId, resourceId, delta){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
-  const r=(m.resources||[]).find(x=>x.id===resourceId); if(!r) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
+  const r=(m.resources||[]).find(x=>x.id===+resourceId); if(!r) return;
   r.current=Math.max(0,Math.min(r.max,r.current+delta));
   save();
   const content=document.getElementById('member-detail-content');
   if(content&&window._memberDetailTab===0) content.innerHTML=renderMemberSummary(m);
 }
 
-// → Set resource value directly (click-to-edit)
+// CORRECTIF v8.2 : +memberId ET +resourceId
 function setResourceVal(memberId, resourceId, val){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
-  const r=(m.resources||[]).find(x=>x.id===resourceId); if(!r) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
+  const r=(m.resources||[]).find(x=>x.id===+resourceId); if(!r) return;
   r.current=Math.max(0,Math.min(r.max, val));
   save();
   const content=document.getElementById('member-detail-content');
   if(content&&window._memberDetailTab===0) content.innerHTML=renderMemberSummary(m);
 }
 
-// → Edit resource modal (name, max, icon, recharge, color)
+// CORRECTIF v8.2 : +memberId ET +resourceId
 function openEditResourceModal(memberId, resourceId){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
-  const r=(m.resources||[]).find(x=>x.id===resourceId); if(!r) return;
-  window._editResource=r; window._editResourceMid=memberId; window._editResourceIsEdit=true;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
+  const r=(m.resources||[]).find(x=>x.id===+resourceId); if(!r) return;
+  window._editResource=r; window._editResourceMid=+memberId; window._editResourceIsEdit=true;
   openModal(`<div class="modal" onclick="event.stopPropagation()" style="max-width:380px">
     <div class="modal-header"><span class="modal-title">✏️ Modifier la ressource</span><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
@@ -382,6 +365,7 @@ function openEditResourceModal(memberId, resourceId){
     </div>
   </div>`);
 }
+
 function saveEditResource(){
   const r=window._editResource;
   if(!r||!r.name.trim()){toast('Nom requis');return;}
@@ -389,20 +373,19 @@ function saveEditResource(){
   save(); closeModal(); renderMemberDetail(); toast('⚡ Ressource mise à jour');
 }
 
-// → Supprime une ressource
+// CORRECTIF v8.2 : +memberId ET +resourceId
 function removeResource(memberId, resourceId){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
-  m.resources=(m.resources||[]).filter(r=>r.id!==resourceId);
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
+  m.resources=(m.resources||[]).filter(r=>r.id!==+resourceId);
   save();
   const content=document.getElementById('member-detail-content');
   if(content&&window._memberDetailTab===0) content.innerHTML=renderMemberSummary(m);
 }
 
-// → Ouvre la modale d'ajout de ressource
 function openAddResourceModal(memberId){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
   const r={id:uid(),name:'',icon:'⚡',current:1,max:1,maxFormula:1,recharge:'repos long',color:'#6366f1'};
-  window._editResource=r; window._editResourceMid=memberId;
+  window._editResource=r; window._editResourceMid=+memberId;
   openModal(`<div class="modal" onclick="event.stopPropagation()" style="max-width:380px">
     <div class="modal-header"><span class="modal-title">⚡ Nouvelle ressource</span><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
@@ -432,10 +415,11 @@ function openAddResourceModal(memberId){
     </div>
   </div>`);
 }
+
 function saveAddResource(){
   const r=window._editResource, mid=window._editResourceMid;
   if(!r.name.trim()){toast('Nom requis');return;}
-  const m=DB.members.find(x=>x.id===mid); if(!m) return;
+  const m=DB.members.find(x=>x.id===+mid); if(!m) return;
   if(!m.resources) m.resources=[];
   m.resources.push({...r});
   save(); closeModal();
@@ -443,7 +427,7 @@ function saveAddResource(){
   if(content&&window._memberDetailTab===0) content.innerHTML=renderMemberSummary(m);
 }
 
-// ── LEGO : drag-and-drop des panneaux du résumé ────────────────
+// ── DRAG-AND-DROP DES PANNEAUX DU RÉSUMÉ ─────────────────────
 let _draggedPanel=null;
 function panelDragStart(ev, panelId, memberId){
   _draggedPanel={panelId,memberId};
@@ -452,18 +436,15 @@ function panelDragStart(ev, panelId, memberId){
 }
 function panelDrop(ev, col, memberId){
   ev.preventDefault();
-  if(!_draggedPanel||_draggedPanel.memberId!==memberId) return;
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
+  if(!_draggedPanel||_draggedPanel.memberId!==+memberId) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
   const LEFT=['identity','stats','saves','skills','lore'];
   const RIGHT=['resources','purse','weapons','gear','npc'];
-  // Move panel to dropped column
   const pid=_draggedPanel.panelId;
   let order=m.panelOrder&&m.panelOrder.length?[...m.panelOrder]:
     [...LEFT,...RIGHT];
-  // Remove from current position, ensure it's in the order
   if(!order.includes(pid)) order.push(pid);
   order=order.filter(x=>x!==pid);
-  // Add to target column at end
   const colPanels=col==='left'?LEFT:RIGHT;
   const lastOfCol=order.filter(x=>colPanels.includes(x)).slice(-1)[0];
   const insertAt=lastOfCol?order.indexOf(lastOfCol)+1:order.length;
@@ -477,7 +458,7 @@ function panelDrop(ev, col, memberId){
 
 // ── IMPRESSION / PDF ──────────────────────────────────────────
 function printMemberSheet(memberId){
-  const m=DB.members.find(x=>x.id===memberId); if(!m) return;
+  const m=DB.members.find(x=>x.id===+memberId); if(!m) return;
   window._printMember=m;
   window.print();
 }
@@ -488,10 +469,8 @@ function save(){
     console.error('localStorage save failed', e);
     toast('⚠️ Sauvegarde texte échouée — localStorage plein ?');
   }
-  // Sauvegarder les blobs en IndexedDB (async)
   const validKeys = new Set(Object.keys(blobs).filter(k=>blobs[k]));
   Object.entries(blobs).forEach(([k,v])=>{ if(v) idbPut(k,v); });
-  // Nettoyer les blobs orphelins
   idbGetAll().then(existing=>{
     Object.keys(existing).forEach(k=>{ if(!validKeys.has(k)) idbDelete(k); });
   }).catch(()=>{});
@@ -501,14 +480,11 @@ function uid(){ return Date.now()+Math.floor(Math.random()*9999); }
 
 function updateStats(){
   document.getElementById('stat-members').textContent = DB.members.length;
-  // Richesse totale : guilde + banque guilde + membres + lingots + trésors
   const _w=DB.wealth||{};
-  const _gb=DB.guildBank||{};
   const _poVal = g => (g?.po||0)+(g?.pp||0)*10+(g?.pa||0)*0.1+(g?.pc||0)*0.01;
   const _memberCoins = DB.members.reduce((s,m)=>s+_poVal(m.gold)+_poVal(m.bank||{}),0);
   const totalPO = Math.round(
     (_w.po||0)+(_w.pp||0)*10+(_w.pa||0)*0.1+(_w.pc||0)*0.01+
-    (_gb.po||0)+(_gb.pp||0)*10+(_gb.pa||0)*0.1+(_gb.pc||0)*0.01+
     _memberCoins +
     (_w.lingots||0)*50 +
     (DB.treasures||[]).reduce((s,tr)=>s+(+(tr.value||0))*(tr.qty||1),0)
@@ -516,4 +492,3 @@ function updateStats(){
   document.getElementById('stat-items').textContent = totalPO.toLocaleString();
   document.getElementById('stat-logs').textContent = DB.journal.length;
 }
-

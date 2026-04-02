@@ -1,28 +1,20 @@
 /**
  * MODULE AVENTURIERS — renderMembers, renderMemberDetail
  * Extrait de V7_6.html lignes 1643-3312
+ *
+ * CORRECTIFS v8.2 : panneau Ressources retiré de renderMemberSummary
  */
-// ================================================================
 // ================================================================
 // MODULE AVENTURIERS
 // ================================================================
-// Architecture: _editMember est le seul état en mémoire pendant
-// l'édition. Les sous-modales (sorts, items) modifient directement
-// _editMember.spells et _editMember.inventory SANS relancer
-// openMemberModal() — seul refreshSpellList()/refreshMemberInvList()
-// est appelé pour mettre à jour l'affichage in-place.
-// ================================================================
-
 let selectedMemberId = DB.members[0]?.id || null;
 
-// --- Couleur par école de magie ---
 const SCHOOL_COLOR = {
   "Abjuration":"#60a5fa","Conjuration":"#4ade80","Divination":"#a78bfa",
   "Enchantement":"#f472b6","Évocation":"#fb923c","Illusion":"#818cf8",
   "Invocation":"#f59e0b","Nécromancie":"#6b7280","Transmutation":"#34d399"
 };
 
-// --- Compétences D&D 5e ---
 const SKILLS = [
   {name:"Acrobaties",  attr:"dex"}, {name:"Arcanes",      attr:"int"},
   {name:"Athlétisme",  attr:"str"}, {name:"Discrétion",   attr:"dex"},
@@ -102,13 +94,11 @@ function renderMemberDetail(){
   }
   const pc = PLANE_COL[m.plane]||'var(--indigo)';
 
-  // Tabs for detail view
   const detailTabs = ['📋 Résumé','✨ Sorts','🎯 Capacités','🎒 Inventaire','🏦 Coffre','📖 Lore','🏆 Chasse','📄 PDF'];
   const activeDetailTab = window._memberDetailTab || 0;
 
   el.innerHTML = `
   <div style="display:flex;flex-direction:column;gap:16px">
-    <!-- TOP BAR -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;align-items:flex-start;gap:18px">
       ${avatarEl(m,72)}
       <div style="flex:1">
@@ -131,18 +121,15 @@ function renderMemberDetail(){
       </div>
     </div>
 
-    <!-- DETAIL TABS -->
     <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);padding-bottom:0;align-items:flex-end;flex-wrap:wrap">
       ${detailTabs.map((t,i)=>`<button class="btn btn-sm ${i===activeDetailTab?'btn-primary':'btn-ghost'}" onclick="window._memberDetailTab=${i};renderMemberDetail()" style="border-radius:6px 6px 0 0">${t}</button>`).join('')}
       <button class="btn btn-ghost btn-xs" style="margin-left:auto;font-size:11px;opacity:.7;margin-bottom:2px"
         onclick="generatePrintSheet(DB.members.find(x=>x.id===${m.id}))" title="Imprimer / Exporter PDF">🖨️ PDF</button>
     </div>
 
-    <!-- TAB CONTENT -->
     <div id="member-detail-content"></div>
   </div>`;
 
-  // Render the active tab
   const content = document.getElementById('member-detail-content');
   if(activeDetailTab===0) content.innerHTML = renderMemberSummary(m);
   else if(activeDetailTab===1) content.innerHTML = renderMemberSpells(m);
@@ -153,7 +140,6 @@ function renderMemberDetail(){
   else if(activeDetailTab===6) content.innerHTML = renderMemberKills(m);
   else if(activeDetailTab===7) content.innerHTML = renderMemberPDF(m);
 
-  // V6 : activer le drag LEGO sur les panneaux du résumé
   if(activeDetailTab===0){
     document.querySelectorAll('.v6-panel').forEach(panel=>{
       const handle = panel.querySelector('.v6-panel-handle');
@@ -198,18 +184,13 @@ function goToNpc(npcId){
   switchModule('npcs',document.querySelector('[data-module=npcs]'));
 }
 
-// ── RÉSUMÉ PERSONNAGE : tout éditable inline (V6) ─────────────────────────────
-// Les champs envoient leurs modifications directement à DB via updateMemberField()
+// ── RÉSUMÉ PERSONNAGE ─────────────────────────────────────────────────────────
 function renderMemberSummary(m){
 
-  // → Raccourci : met à jour un champ imbriqué et sauvegarde
-  // path ex: 'stats.str' | 'hp.current' | 'gold.po' | 'race'
-  // Exposé globalement pour les oninput inline
   window._umf = window.updateMemberField;
 
   const mid = m.id;
 
-  // → Génère un input numérique inline sauvegardant sur changement
   const numInput = (path, val, opts='') =>
     `<input type="number" value="${+val||0}" ${opts}
       onchange="updateMemberField(${mid},'${path}',+this.value)"
@@ -219,7 +200,6 @@ function renderMemberSummary(m){
       onfocus="this.style.borderBottomColor='var(--indigo)'"
       onblur="this.style.borderBottomColor='var(--border2)'">`;
 
-  // → Génère un input texte inline
   const txtInput = (path, val, placeholder='', style='') =>
     `<input type="text" value="${esc(val||'')}" placeholder="${esc(placeholder)}"
       onchange="updateMemberField(${mid},'${path}',this.value)"
@@ -228,12 +208,11 @@ function renderMemberSummary(m){
       onfocus="this.style.borderBottomColor='var(--indigo)'"
       onblur="this.style.borderBottomColor='var(--border2)'">`;
 
-  // → Panneau draggable (LEGO V6) — chaque card peut être réordonnée
   const panelOrder = m.panelOrder&&m.panelOrder.length
     ? m.panelOrder
-    : ['identity','stats','saves','skills','resources','purse','weapons','gear','lore','proficiencies'];
+    : ['identity','stats','saves','skills','purse','weapons','gear','lore','proficiencies'];
 
-  // ── PANNEAU : IDENTITÉ ÉTENDUE ───────────────────────────────
+  // ── PANNEAU : IDENTITÉ ───────────────────────────────────────
   const panelIdentity = `<div class="card v6-panel" data-panel="identity" data-mid="${mid}">
     <div class="v6-panel-handle" title="Glisser pour réordonner">⠿</div>
     <div style="font-size:11px;color:var(--indigo);font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">
@@ -267,7 +246,7 @@ function renderMemberSummary(m){
     </div>
   </div>`;
 
-  // ── PANNEAU : CARACTÉRISTIQUES (stats inline) ──────────────────
+  // ── PANNEAU : CARACTÉRISTIQUES ──────────────────────────────
   const panelStats = `<div class="card v6-panel" data-panel="stats" data-mid="${mid}">
     <div class="v6-panel-handle" title="Glisser pour réordonner">⠿</div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -312,7 +291,6 @@ function renderMemberSummary(m){
         ${parts.map(p=>`<span style="font-size:11px;color:var(--indigo);background:var(--indigo)15;padding:2px 7px;border-radius:10px">${p}</span>`).join('')}
       </div>`:'';
     })()}
-    <!-- Ligne CA / PV / Init / Vitesse -->
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px">
       ${[
         ['ac','CA','🛡️'],
@@ -351,8 +329,7 @@ function renderMemberSummary(m){
     </div>
   </div>`;
 
-  // ── PANNEAU : JETS DE SAUVEGARDE ───────────────────────────────
-  // → Clic sur le point = toggle maîtrise, valeur recalculée en temps réel
+  // ── PANNEAU : JETS DE SAUVEGARDE ──────────────────────────────
   const panelSaves = `<div class="card v6-panel" data-panel="saves" data-mid="${mid}">
     <div class="v6-panel-handle" title="Glisser pour réordonner">⠿</div>
     <div style="font-size:11px;color:var(--indigo);font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">
@@ -381,7 +358,6 @@ function renderMemberSummary(m){
   </div>`;
 
   // ── PANNEAU : COMPÉTENCES ──────────────────────────────────────
-  // → Clic simple = maîtrise (indigo), double-clic = expertise (or)
   const panelSkills = `<div class="card v6-panel" data-panel="skills" data-mid="${mid}">
     <div class="v6-panel-handle" title="Glisser pour réordonner">⠿</div>
     <div style="font-size:11px;color:var(--indigo);font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">
@@ -414,67 +390,13 @@ function renderMemberSummary(m){
     <div style="font-size:10px;color:var(--dim);margin-top:6px">🟣 clic = maîtrise · 🟡 double-clic = expertise</div>
   </div>`;
 
-  // ── PANNEAU : RESSOURCES LIMITÉES ─────────────────────────────
-  const resources = m.resources||[];
-  const panelResources = `<div class="card v6-panel" data-panel="resources" data-mid="${mid}">
-    <div class="v6-panel-handle" title="Glisser pour réordonner">⠿</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-      <div style="font-size:11px;color:var(--indigo);font-weight:700;letter-spacing:.1em;text-transform:uppercase">⚡ Ressources</div>
-      <div style="display:flex;gap:5px">
-        <button class="btn btn-xs btn-outline" onclick="doRest(${mid},'court')" title="Repos court">⏳ Court</button>
-        <button class="btn btn-xs btn-outline" onclick="doRest(${mid},'long')"  title="Repos long">🌙 Long</button>
-        <button class="btn btn-xs btn-ghost"   onclick="openAddResourceModal(${mid})">+ Ajouter</button>
-      </div>
-    </div>
-    ${resources.length===0?`<div style="color:var(--dim);font-size:12px;font-style:italic">
-        Aucune ressource.
-        ${CLASS_RESOURCES[(m.clazz||'').trim()]?`<button class="btn btn-xs btn-outline" style="margin-left:8px"
-          onclick="initClassResources(DB.members.find(x=>x.id===${mid}));save();renderMemberDetail()">
-          ✨ Init. depuis ${esc(m.clazz)}</button>`:''}
-      </div>`
-    :`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px">
-      ${resources.map((r,ri)=>{
-        const pct = r.max>0?Math.min(1,r.current/r.max):0;
-        const col = r.color||'var(--indigo)';
-        return `<div style="background:var(--surface);border:1px solid ${col}44;border-radius:10px;padding:10px;position:relative;text-align:center">
-          <div style="position:absolute;top:3px;right:3px;display:flex;gap:2px">
-            <button onclick="openEditResourceModal(${mid},'${r.id}')"
-              style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:10px;padding:1px 4px;border-radius:3px"
-              onmouseover="this.style.color='var(--indigo)'" onmouseout="this.style.color='var(--dim)'" title="Modifier">✏️</button>
-            <button onclick="removeResource(${mid},'${r.id}')"
-              style="background:none;border:none;color:var(--dim);cursor:pointer;font-size:10px;padding:1px 4px;border-radius:3px"
-              onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--dim)'" title="Supprimer">✕</button>
-          </div>
-          <div style="font-size:20px;margin-bottom:3px">${r.icon||'⚡'}</div>
-          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;line-height:1.2">${esc(r.name)}</div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:6px">
-            <button onclick="updateResourceVal(${mid},'${r.id}',-1)"
-              style="width:22px;height:22px;border-radius:50%;background:${col}33;border:none;color:${col};cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center">−</button>
-            <input type="number" value="${r.current}" min="0" max="${r.max}"
-              onchange="setResourceVal(${mid},'${r.id}',+this.value)"
-              style="width:36px;background:transparent;border:none;color:${col};font-size:20px;font-weight:900;text-align:center;outline:none;-moz-appearance:textfield"
-              title="Cliquer pour modifier">
-            <button onclick="updateResourceVal(${mid},'${r.id}',+1)"
-              style="width:22px;height:22px;border-radius:50%;background:${col}33;border:none;color:${col};cursor:pointer;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center">+</button>
-          </div>
-          <div style="height:4px;background:var(--border2);border-radius:2px;overflow:hidden;margin-bottom:4px">
-            <div style="height:100%;width:${Math.min(100,pct*100)}%;background:${col};border-radius:2px;transition:width .3s"></div>
-          </div>
-          <div style="font-size:10px;color:var(--dim)">${r.current}/${r.max} · ${r.recharge}</div>
-        </div>`;
-      }).join('')}
-    </div>`}
-  </div>`;
-
   // ── PANNEAU : BOURSE ───────────────────────────────────────────
-  // → Champs numériques directs pour PP/PO/PA/PC
   const panelPurse = `<div class="card v6-panel" data-panel="purse" data-mid="${mid}">
     <div class="v6-panel-handle" title="Glisser pour réordonner">⠿</div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:11px;color:var(--indigo);font-weight:700;letter-spacing:.1em;text-transform:uppercase">💰 Bourse</div>
       <button class="btn btn-xs btn-ghost" onclick="openBourseTransferModal(${mid})" style="font-size:10px">⇄ Transférer</button>
     </div>
-    <!-- Bourse sur soi -->
     <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Sur soi</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
       ${[['pp','PP','#c084fc'],['po','PO','#fbbf24'],['pa','PA','#9ca3af'],['pc','PC','#b45309']].map(([k,label,col])=>`
@@ -485,7 +407,6 @@ function renderMemberSummary(m){
           <div style="font-size:10px;color:${col};opacity:.7;margin-top:1px">${label}</div>
         </div>`).join('')}
     </div>
-    <!-- En banque de guilde -->
     <div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">🏦 En banque de guilde</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
       ${[['pp','PP','#c084fc'],['po','PO','#fbbf24'],['pa','PA','#9ca3af'],['pc','PC','#b45309']].map(([k,label,col])=>`
@@ -602,25 +523,22 @@ function renderMemberSummary(m){
     </div>
   </div>`:'';
 
-  // ── ASSEMBLY : ordre configurable par drag ─────────────────────
+  // ── ASSEMBLY ──────────────────────────────────────────────────
   const PANEL_MAP = {
     identity: panelIdentity, stats: panelStats,
     saves: panelSaves, skills: panelSkills,
-    resources: panelResources, purse: panelPurse,
+    purse: panelPurse,
     weapons: panelWeapons, gear: panelGear,
     lore: panelLore, npc: panelNpc,
-    proficiencies: panelLore // alias
+    proficiencies: panelLore
   };
-  const DEFAULT_ORDER = ['identity','stats','saves','skills','resources','purse','weapons','gear','lore','npc'];
+  const DEFAULT_ORDER = ['identity','stats','saves','skills','purse','weapons','gear','lore','npc'];
   const order = (m.panelOrder&&m.panelOrder.length) ? m.panelOrder : DEFAULT_ORDER;
 
-  // Split en 2 colonnes pour équilibre visuel
-  // Colonne gauche : stats-heavy | Colonne droite : actions/ressources
   const LEFT_DEFAULT  = ['identity','stats','saves','skills','lore'];
-  const RIGHT_DEFAULT = ['resources','purse','weapons','gear','npc'];
+  const RIGHT_DEFAULT = ['purse','weapons','gear','npc'];
   const leftIds  = order.filter(id=>LEFT_DEFAULT.includes(id));
   const rightIds = order.filter(id=>RIGHT_DEFAULT.includes(id));
-  // Les IDs non classés vont à droite
   const extraIds = order.filter(id=>!LEFT_DEFAULT.includes(id)&&!RIGHT_DEFAULT.includes(id));
 
   const renderCol = (ids) => ids
@@ -796,7 +714,6 @@ function renderMemberInventoryView(m){
   const pct = cc.capacity > 0 ? Math.min(1, cc.used/cc.capacity) : 1;
   const over = cc.used > cc.capacity;
 
-  // Stats summary
   const equippedCount = inv.filter(i=>i.equippedSlot).length;
   const totalItems    = inv.reduce((s,i)=>s+(i.qty||1),0);
   const totalCases    = inv.reduce((s,i)=>{ const sz=i.size!==undefined?i.size:(i.w||1); return s+sz*(i.qty||1); },0);
@@ -806,10 +723,7 @@ function renderMemberInventoryView(m){
   const viewToggle = memberInvViewMode==='list' ? '⊞ Vignettes' : '☰ Liste';
 
   return `<div style="display:flex;flex-direction:column;gap:10px">
-    <!-- Barre de capacité -->
     ${carryBar(m)}
-
-    <!-- Stats bar -->
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border2)">
       <span style="font-size:12px;color:var(--text);font-weight:600">📦 ${inv.length} type(s)</span>
       <span style="color:var(--border2)">·</span>
@@ -820,8 +734,6 @@ function renderMemberInventoryView(m){
       <div style="flex:1"></div>
       ${Object.keys(cats).slice(0,4).map(cat=>`<span style="font-size:10px;background:var(--surface);padding:1px 7px;border-radius:10px;color:var(--dim)">${CAT_ICON[cat]||'📦'} ${cats[cat]}</span>`).join('')}
     </div>
-
-    <!-- Règles collapsibles -->
     <div>
       <button onclick="const r=document.getElementById('carry-rules-v');r.style.display=r.style.display==='none'?'block':'none'"
         class="btn btn-ghost btn-xs" style="font-size:10px;opacity:.6;margin-bottom:4px">📋 Règles d'encombrement</button>
@@ -832,18 +744,13 @@ function renderMemberInventoryView(m){
         Chaque objet a une taille en cases. Bourse libre jusqu'à 100 pièces — surplus : 1 case / rouleau de 50.
       </div>
     </div>
-
-    <!-- Header + actions -->
     <div style="display:flex;align-items:center;gap:6px">
       <button class="btn btn-ghost btn-xs" onclick="memberInvViewMode=memberInvViewMode==='list'?'grid':'list';renderMemberDetail()">${viewToggle}</button>
       <div style="flex:1"></div>
       <button class="btn btn-primary btn-sm" onclick="openMemberInvModal()">+ Ajouter</button>
     </div>
-
-    <!-- Inventaire -->
     ${inv.length===0?`<div style="text-align:center;color:var(--dim);padding:40px;font-style:italic">Inventaire vide.</div>`:''}
     ${memberInvViewMode==='grid' ? `
-    <!-- VUE VIGNETTES -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px">
       ${inv.map((item,idx)=>{
         const rc = RARITY[item.rarity]?.col||'#6366f1';
@@ -865,7 +772,6 @@ function renderMemberInventoryView(m){
       }).join('')}
     </div>
     ` : `
-    <!-- VUE LISTE -->
     <div style="display:flex;flex-direction:column;gap:5px">
       ${inv.map((item,idx)=>{
         const rc = RARITY[item.rarity]?.col||'#6366f1';
@@ -947,7 +853,6 @@ function renderMemberGuildChest(m){
   const communal  = (DB.guildInventory||[]).filter(i=>!i.ownerId);
   const pocket    = m.pocket||[];
 
-  // Item row: draggable, with optional transfer button
   const itemRow = (item, zone, src='guild', itemIdx=null, canEdit=true, showOwner=false) => {
     const gIdx = src==='guild' ? (DB.guildInventory||[]).indexOf(item) : -1;
     const pIdx = src==='pocket' ? itemIdx : -1;
@@ -984,12 +889,9 @@ function renderMemberGuildChest(m){
       data-drop-id="${id}">`;
 
   return `<div style="display:flex;flex-direction:column;gap:14px">
-    <!-- Instructions -->
     <div style="background:var(--surface2);border-radius:8px;padding:8px 12px;color:var(--dim);font-size:11px">
       ↕️ Glissez-déposez les objets entre les sections. 📦 = envoyer vers l'inventaire.
     </div>
-
-    <!-- SACOCHE (pocket) -->
     ${(()=>{
       const pCap  = m.pocketSize||6;
       const pName = m.pocketName||'Sacoche';
@@ -1048,7 +950,6 @@ function renderMemberGuildChest(m){
       </div>
     </div>
 
-    <!-- INVENTAIRE PERSONNEL -->
     ${(()=>{
       const mInv = m.inventory||[];
       const cc   = calcCarryCapacity(m);
@@ -1095,7 +996,6 @@ function renderMemberGuildChest(m){
         +'</div>';
     })()}
 
-    <!-- CASIER PERSONNEL (guild) -->
     <div class="card" id="chest-zone-personal">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <div style="font-size:11px;color:var(--indigo);font-weight:700;letter-spacing:.1em;text-transform:uppercase">🔒 Casier Personnel</div>
@@ -1107,7 +1007,6 @@ function renderMemberGuildChest(m){
       </div>
     </div>
 
-    <!-- COFFRE COMMUN -->
     <div class="card" id="chest-zone-communal">
       <div style="font-size:11px;color:var(--indigo);font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">⚖️ Coffre Commun</div>
       ${dropZone('communal','Coffre commun')}
@@ -1116,7 +1015,6 @@ function renderMemberGuildChest(m){
       </div>
     </div>
 
-    <!-- Casiers autres membres (lecture seule) -->
     ${allGuild.length>0?`<div class="card">
       <div style="font-size:11px;color:var(--dim);font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">👥 Casiers des autres membres</div>
       ${allGuild.map(item=>itemRow(item,'other','guild',-1,false,true)).join('')}
@@ -1272,7 +1170,6 @@ function chestDrop(ev, targetZone, memberId){
   renderMemberDetail(); updateStats();
 }
 
-// ── Sacoche (pocket) helpers ─────────────────────────────────
 function openAddPocketItem(memberId){
   const m=DB.members.find(x=>x.id===memberId); if(!m) return;
   if(!m.pocket) m.pocket=[];
@@ -1326,7 +1223,6 @@ function removePocketItem(memberId, idx){
   save(); renderMemberDetail();
 }
 
-// ── Envoyer un item de l'inventaire vers la sacoche ──────────
 function sendInvItemToPocket(memberId, itemId){
   const m=DB.members.find(x=>x.id===memberId); if(!m) return;
   const invIdx=(m.inventory||[]).findIndex(i=>i.id===itemId); if(invIdx<0) return;
@@ -1343,7 +1239,6 @@ function sendInvItemToPocket(memberId, itemId){
   toast(`${item.name} → sacoche`);
 }
 
-// ── Transférer du coffre vers l'inventaire perso ─────────────
 function openGuildToInvTransfer(gIdx, memberId){
   const item=DB.guildInventory[gIdx]; if(!item) return;
   const m=DB.members.find(x=>x.id===memberId); if(!m) return;
@@ -1449,7 +1344,6 @@ function renderMemberLore(m){
       <div style="font-size:11px;color:var(--gold);font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">🔒 Secrets MJ</div>
       <div class="secret-box"><p class="secret-text" style="white-space:pre-wrap">${esc(m.loreDmSecrets)}</p></div>
     </div>`:''}
-    <!-- AVENTURES LIÉES AU PERSONNAGE -->
     ${(()=>{
       const memberJournal = (DB.journal||[]).filter(e=>
         e.authorId===m.id || (e.participants||[]).includes(m.id)
@@ -1486,20 +1380,19 @@ function renderMemberLore(m){
     </div>
   </div>`;
 }
-// ── Transfert bourse ↔ banque de guilde ──────────────────────
+
 function openBourseTransferModal(memberId){
   const m = DB.members.find(x=>x.id===memberId); if(!m) return;
   if(!m.gold) m.gold={pp:0,po:0,pa:0,pc:0};
   if(!m.bank) m.bank={pp:0,po:0,pa:0,pc:0};
   window._bourseTransferId = memberId;
-  window._bourseDir = 'toBank'; // 'toBank' or 'toSelf'
+  window._bourseDir = 'toBank';
   openModal(`<div class="modal" onclick="event.stopPropagation()" style="max-width:420px">
     <div class="modal-header">
       <span class="modal-title">⇄ Bourse ↔ Banque de Guilde</span>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <!-- Résumé actuel -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
         <div style="background:var(--surface2);border-radius:8px;padding:10px">
           <div style="font-size:10px;color:var(--dim);text-transform:uppercase;margin-bottom:6px">💰 Sur soi</div>
@@ -1516,7 +1409,6 @@ function openBourseTransferModal(memberId){
             </div>`).join('')}
         </div>
       </div>
-      <!-- Formulaire -->
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <select onchange="window._bourseDir=this.value" style="flex:1;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:6px 8px">
           <option value="toBank">💰 Bourse → 🏦 Banque</option>
@@ -1570,7 +1462,6 @@ function renderMemberKills(m){
   </div>`;
 
   return `<div style="display:flex;flex-direction:column;gap:16px">
-    <!-- Header stats -->
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:12px">
         <span style="font-size:28px">☠️</span>
@@ -1586,10 +1477,8 @@ function renderMemberKills(m){
       <button class="btn btn-primary btn-sm" onclick="openAddKillModal(${m.id})">+ Ajouter</button>
     </div>
 
-    <!-- Grille de kills -->
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px">
       ${kills.map((k,ki)=>{
-        // Chercher l'image dans le bestiaire si on a un beastId
         const beast = k.beastId ? (DB.bestiary||[]).find(b=>b.id===k.beastId) : null;
         const img = k.image || beast?.image || null;
         const ico = k.icon || beast?.icon || '☠️';
@@ -1597,23 +1486,18 @@ function renderMemberKills(m){
           transition:border-color .15s,transform .15s"
           onmouseover="this.style.borderColor='#f87171';this.style.transform='translateY(-2px)'"
           onmouseout="this.style.borderColor='#7f1d1d44';this.style.transform=''">
-          <!-- Image ou icône -->
           <div style="width:60px;height:60px;margin:0 auto 10px;background:#7f1d1d22;border-radius:50%;display:flex;align-items:center;justify-content:center;overflow:hidden;border:2px solid #7f1d1d44">
             ${img
               ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
               : `<span style="font-size:26px">${ico}</span>`}
           </div>
-          <!-- Nom -->
           <div style="font-family:'Cinzel',serif;font-weight:700;font-size:12px;color:var(--text);margin-bottom:6px;line-height:1.3">${esc(k.name)}</div>
-          <!-- Compteur -->
           <div style="display:flex;align-items:center;justify-content:center;gap:4px">
             <button onclick="memberKillDelta(${m.id},${ki},-1)" class="btn btn-xs btn-ghost" style="padding:2px 6px;font-size:12px;color:var(--dim)">−</button>
             <span style="background:#7f1d1d;color:#fca5a5;padding:3px 10px;border-radius:6px;font-weight:900;font-size:14px;min-width:28px">${k.count||1}</span>
             <button onclick="memberKillDelta(${m.id},${ki},1)" class="btn btn-xs btn-ghost" style="padding:2px 6px;font-size:12px;color:var(--red)">+</button>
           </div>
-          <!-- Bestiaire link -->
           ${beast?`<div style="margin-top:6px"><a href="#" onclick="beastViewMode='detail';selectedBeastId=${beast.id};switchModule('bestiary',document.querySelector('[data-module=bestiary]'));event.preventDefault()" style="color:var(--dim);font-size:10px">→ Bestiaire</a></div>`:''}
-          <!-- Delete -->
           <button onclick="memberKillRemove(${m.id},${ki})" style="position:absolute;top:6px;right:6px;background:none;border:none;color:var(--dim);cursor:pointer;font-size:12px;padding:2px" title="Retirer">✕</button>
         </div>`;
       }).join('')}
@@ -1671,4 +1555,3 @@ function viewPDF(memberId){
     <div style="height:calc(100% - 60px)"><iframe src="${m.pdf}" style="width:100%;height:100%;border:none;border-radius:0 0 14px 14px"></iframe></div>
   </div>`);
 }
-
