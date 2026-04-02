@@ -6,226 +6,266 @@
 Pas de framework, pas de bundler, pas de backend. Juste `index.html` qui charge les fichiers JS/CSS.
 Ouvrir `index.html` dans un navigateur suffit pour tout faire tourner.
 
-## Persistence des données
+---
 
-- **localStorage** pour les données textuelles (clé: `cdp_v3`)
-- **IndexedDB** pour les blobs (images base64 des avatars, battlemaps, médias)
+## Persistance des données
+
+- **localStorage** — données textuelles (clé : `cdp_v3`)
+- **IndexedDB** — blobs base64 : avatars (`m_av_<id>`, `n_av_<id>`), PDFs (`m_pdf_<id>`), images de fond battlemaps (`bm_bg_<id>`), médias (`med_<id>`)
 - Pas de serveur, tout est local au navigateur de l'utilisateur
+- `save()` écrit le texte dans localStorage + les blobs dans IndexedDB (async, non bloquant)
+- Au chargement : texte depuis localStorage, blobs réinjectés via `loadBlobsIntoDB()` (async)
+
+---
 
 ## Architecture des fichiers
 
 ```
-conseil-du-plan-v8/
-├── index.html                     # Point d'entrée — charge tout
+conseil-du-plan/
+├── index.html                     # Point d'entrée — charge tout dans l'ordre
 ├── css/styles.css                 # Tout le CSS (~500 lignes)
 ├── js/
 │   ├── core/                      # Infrastructure
-│   │   ├── constants.js           # STORE_KEY, SPELL_SCHOOLS, ALIGNMENTS, RACES, etc.
-│   │   ├── db.js                  # save()/load(), IndexedDB, hydrate(), helpers inline
-│   │   ├── toast.js               # toast(msg) — notifications
-│   │   ├── modal.js               # openModal(html, onReady), closeModal()
-│   │   ├── app.js                 # switchModule() — navigation entre onglets
-│   │   ├── utils.js               # esc(), uid(), RARITY, calcCarryCapacity(),
-│   │   │                          # + [Patch 2a] normalizeItem()
-│   │   │                          # + [Patch 2b] DragDrop
+│   │   ├── constants.js           # STORE_KEY, SPELL_SCHOOLS, ALIGNMENTS, RACES_5E…
+│   │   ├── db.js                  # save(), IndexedDB, updateMemberField(), toggleSaveProficiency()…
+│   │   ├── toast.js               # toast(msg)
+│   │   ├── modal.js               # openModal(html), closeModal()
+│   │   ├── app.js                 # switchModule(), renderModule()
+│   │   ├── utils.js               # esc(), uid(), RARITY, calcCarryCapacity(), normalizeItem(), DragDrop
 │   │   ├── export-import.js       # exportData(), importData()
-│   │   └── init.js                # DOMContentLoaded, theme restore, hydrate()
-│   ├── modules/                   # Modules fonctionnels (1 par onglet)
-│   │   ├── aventuriers.js         # Fiches personnages (101KB, le plus gros)
-│   │   ├── member-modal.js        # Modale d'édition multi-onglets d'un aventurier
+│   │   └── init.js                # Bootstrap : thème, updateStats(), renderMembers(), loadBlobsIntoDB()
+│   ├── modules/
+│   │   ├── aventuriers.js         # Fiches perso (le plus gros module)
+│   │   ├── member-modal.js        # Formulaire d'édition multi-onglets d'un aventurier
 │   │   ├── member-spells.js       # Sous-modale sorts (modifie _editMember.spells)
 │   │   ├── member-inventory.js    # Sous-modale inventaire perso
-│   │   ├── member-save.js         # saveMember() — sauvegarde d'un aventurier
-│   │   ├── member-resources.js    # [Patch 4] Ressources aventurier (slots sorts, capacités)
-│   │   ├── inventaire.js          # Inventaire de guilde (items, wealth, market, merchants, chests)
-│   │   │                          # + [Patch 1] renderWealthPanel() corrigé
-│   │   │                          # + [Bug fix] calcWealthPO() pour les flottants IEEE 754
-│   │   ├── journal.js             # Chroniques de la campagne
-│   │   ├── pnj.js                 # PNJ (personnages non-joueurs)
-│   │   ├── battlemaps.js          # Cartes de bataille avec tokens (72KB)
-│   │   ├── medias.js              # Galerie d'images
-│   │   ├── bestiaire.js           # Bestiaire D&D 5e avec statblocks
-│   │   ├── tresors.js             # Trésors trouvés
-│   │   ├── chasse.js              # Tableau de chasse (monstres tués)
-│   │   └── aventure.js            # Module Aventure V6.3 (quêtes, factions, timeline, notes)
-│   └── data/                      # Données statiques volumineuses
-│       ├── data-store.js          # DB par défaut, membres démo, données initiales
-│       │                          # Contient : NPC_STATUSES, CONDITIONS, MEDIA_TYPES,
-│       │                          # CLASS_RESOURCES, MERCHANTS, ITEM_DATABASE, etc.
-│       └── spells-aidedd.js       # 490+ sorts D&D 5e en français (493KB, 1 ligne)
-└── assets/                        # (vide pour l'instant)
+│   │   ├── member-save.js         # saveMember()
+│   │   ├── member-resources.js    # Ressources de classe (slots sorts, capacités) — non affiché pour l'instant
+│   │   ├── inventaire.js          # Coffre, richesse, marchands, investissements, coffres nommés
+│   │   ├── journal.js             # Chroniques de campagne
+│   │   ├── pnj.js                 # PNJ
+│   │   ├── battlemaps.js          # Cartes + initiative + dés + lieux + audio
+│   │   ├── medias.js              # Galerie médias + Grimoire 490+ sorts
+│   │   ├── bestiaire.js           # Statblocks + import + générateur de loot
+│   │   ├── tresors.js             # Objets de valeur (appelé depuis inventaire.js)
+│   │   ├── chasse.js              # Tableau de chasse (appelé depuis aventuriers.js)
+│   │   └── aventure.js            # Quêtes, factions, timeline, plans, sessions + toggle thème
+│   └── data/
+│       ├── data-store.js          # DB par défaut + toutes les grandes constantes
+│       └── spells-aidedd.js       # 490+ sorts D&D 5e en français (~493KB, 1 ligne)
+└── assets/                        # (vide)
 ```
 
-## Comment ça communique entre modules
-
-Tout est en **variables globales** sur `window` :
-- `DB` — l'objet central avec toutes les données (members, journal, npcs, bestiary, battlemaps, etc.)
-- `save()` — persiste DB en localStorage
-- `selectedMemberId`, `invTab`, `journalSelectedId`, etc. — état UI par module
-- Les fonctions `renderMembers()`, `renderInventory()`, etc. sont globales
-
-Il n'y a PAS d'encapsulation IIFE ni de modules ES6. C'est volontaire : l'app a été conçue comme un monolithe et la modularisation est récente. L'encapsulation se fera progressivement.
+---
 
 ## Ordre de chargement des scripts
 
-**L'ordre est critique !** Défini dans index.html :
-1. `core/constants.js` — définit les constantes utilisées partout
-2. `data/data-store.js` — initialise DB avec les données par défaut
-3. `core/db.js` — fonctions save/load/hydrate + helpers inline membres
-4. `core/toast.js`, `core/modal.js`, `core/app.js` — UI de base
+**L'ordre est critique.** Défini dans `index.html` :
+
+1. `core/constants.js` — constantes globales
+2. `data/data-store.js` — DB par défaut + ITEM_DATABASE, MERCHANTS, CLASS_RESOURCES, etc.
+3. `core/db.js` — save/load/hydrate + helpers membres
+4. `core/toast.js`, `core/modal.js`, `core/app.js`
 5. `core/utils.js` — helpers + normalizeItem() + DragDrop
 6. `modules/aventuriers.js` → `member-modal.js` → `member-spells.js` → `member-inventory.js` → `member-save.js`
-7. `modules/member-resources.js` — **après member-save.js**, avant inventaire.js
-8. `modules/inventaire.js` → ... → tous les autres modules
-9. `data/spells-aidedd.js` — après le bestiaire qui l'utilise
-10. `core/export-import.js` — après tous les modules
-11. `core/init.js` — DERNIER : lance hydrate() et le premier rendu
+7. `modules/member-resources.js` — après member-save.js, avant inventaire.js
+8. `modules/inventaire.js` → `journal.js` → `pnj.js` → `battlemaps.js` → `medias.js` → `bestiaire.js` → `tresors.js` → `chasse.js` → `aventure.js`
+9. `data/spells-aidedd.js` — après bestiaire.js (qui l'utilise)
+10. `core/export-import.js`
+11. `core/init.js` — **DERNIER** : lance le premier rendu
+
+---
+
+## Communication entre modules
+
+Tout est en **variables globales** sur `window`. Pas d'encapsulation IIFE ni de modules ES6 (volontaire — monolithe en cours de modularisation).
+
+Variables d'état globales importantes :
+- `DB` — objet central (members, journal, npcs, bestiary, battlemaps, guildInventory, wealth…)
+- `save()` — persiste DB
+- `uid()` — génère un ID unique **number** (`Date.now() + random`) — important : toujours un number, pas une string
+- `selectedMemberId`, `invTab`, `invGuildTab`, `journalSelectedId`, `selectedNpcId`, etc.
+- `window._editMember`, `window._editMemberInvItem`, `window._editSpell` — états des modales d'édition
+
+---
+
+## Structure de DB
+
+```javascript
+DB = {
+  members: [...],          // Aventuriers
+  journal: [...],          // Entrées de journal
+  npcs: [...],             // PNJ
+  bestiary: [...],         // Créatures
+  battlemaps: [...],       // Cartes
+  guildInventory: [...],   // Objets du coffre de guilde
+  wealth: {pp,po,pa,pc,lingots,tresor},   // Trésorerie principale
+  guildBank: {pp,po,pa,pc},               // Conservé mais non affiché (doublon)
+  guildChests: [...],      // Coffres nommés
+  market: [...],           // Objets en vente
+  merchants: {},           // Marchands custom (sinon MERCHANTS de data-store.js)
+  merchantItems: {},       // Stocks custom par marchand
+  investments: {capital, history:[]},
+  treasures: [...],        // Objets de valeur
+  media: [...],            // Fichiers médias
+  quests: [...],           // Quêtes
+  factions: [...],         // Factions
+  timeline: [...],         // Événements
+  timelineGroups: [...],   // Timelines nommées
+  planes: [...],           // Plans cosmologiques custom
+  customPlanes: [...],     // Noms de plans personnalisés
+  sessionNotes: [...],     // Notes de session
+  locations: [...],        // Lieux (battlemaps)
+}
+```
+
+Structure d'un membre :
+```javascript
+{
+  id, name, clazz, level, plane, avatar, avatarImg,
+  stats: {str,dex,con,int,wis,cha},
+  hp: {current,max}, ac, speed, profBonus, initiative,
+  gold: {pp,po,pa,pc}, bank: {pp,po,pa,pc},
+  saveProficiencies:[], skillProficiencies:[], skillExpertise:[],
+  spells:[], inventory:[], weapons:[], pocket:[], pocketSize,
+  features:[], specializations:[], resources:[],
+  kills:[], equipment:{}, extraFields:[],
+  loreBackground, lorePersonality, loreBonds, loreFlaws, loreDmSecrets,
+  race, alignment, background, age, languages,
+  armorProf, weaponProf, toolProf, panelOrder:[],
+  pdf, pdfName, isNpc, linkedNpcId,
+}
+```
+
+---
 
 ## Règles strictes de développement
 
 ### 1. JAMAIS de backticks imbriqués
-Le code utilise des template literals, mais **ne jamais imbriquer** un template literal dans un autre.
+
 ```javascript
 // ❌ INTERDIT
 html += `<div onclick="${`dosomething(${id})`}">`;
 
 // ✅ CORRECT
-html += '<div onclick="dosomething(' + id + ')">';
-// ou
 html += `<div onclick="dosomething(${id})">`;
+// ou
+html += '<div onclick="dosomething(' + id + ')">';
 ```
 
-### 2. Vérification syntaxique après chaque modif
+### 2. IDs toujours des numbers — coercion obligatoire dans les fonctions
+
+`uid()` retourne un **number**. Après passage dans un attribut HTML `onclick="fn('${id}')"`, l'ID arrive comme **string** dans la fonction. Toujours forcer la conversion avec `+` dans les fonctions qui cherchent par ID :
+
+```javascript
+// ✅ CORRECT — résiste aux deux cas (string ou number en entrée)
+const m = DB.members.find(x => x.id === +memberId);
+const r = (m.resources||[]).find(x => x.id === +resourceId);
+```
+
+Ne jamais passer un ID entre guillemets simples dans un `onclick` si la fonction compare avec `===` :
+```javascript
+// ❌ Risqué si la fonction utilise ===
+onclick="fn('${r.id}')"
+
+// ✅ Sûr — passe comme number
+onclick="fn(${r.id})"
+```
+
+### 3. Vérification syntaxique après chaque modification
+
 ```bash
 node --check js/modules/aventuriers.js
+node --check js/core/db.js
 ```
 
-### 3. Pas de dépendances externes
+### 4. Ne JAMAIS redéclarer dans utils.js ce qui est dans data-store.js
+
+Ces constantes/fonctions sont dans `data/data-store.js` et causent une `SyntaxError: redeclaration` si redéclarées ailleurs :
+
+`MEDIA_TYPES`, `NPC_STATUSES`, `CONDITIONS`, `CLASS_RESOURCES`, `MERCHANTS`, `ITEM_DATABASE`, `getLootTier()`, `generateLoot()`, `initClassResources()`, `doRest()`, `NPC_RELATION_TYPES`, `LOOT_TIERS`, `STORE_KEY`, `SPELL_SCHOOLS`, `ALIGNMENTS`, `RACES_5E`, `SPELL_LEVELS`, `CAST_TIMES`, `DURATIONS`, `RANGES`
+
+### 5. Pas de dépendances externes
+
 Sauf Google Fonts. Pas de npm, pas de CDN, pas de framework.
 
-### 4. Test dans le navigateur
-Ouvrir `index.html` directement (protocole file://) — tout doit marcher.
+### 6. Test en file://
 
-### 5. Ne JAMAIS redéclarer dans utils.js ce qui est dans data-store.js
-Les constantes suivantes sont définies dans `data/data-store.js` et ne doivent
-**pas** être redéclarées dans `core/utils.js` (causera un `SyntaxError: redeclaration`) :
-- `MEDIA_TYPES`, `NPC_STATUSES`, `CONDITIONS`
-- `CLASS_RESOURCES`, `MERCHANTS`, `ITEM_DATABASE`
-- `getLootTier()`, `generateLoot()`, `initClassResources()`, `doRest()`
-- `NPC_RELATION_TYPES`, `LOOT_TIERS`, `STORE_KEY`, `SPELL_SCHOOLS`
-- `ALIGNMENTS`, `RACES_5E`, `SPELL_LEVELS`, `CAST_TIMES`, `DURATIONS`, `RANGES`
+Ouvrir `index.html` directement — tout doit marcher sans serveur local.
 
-## Données volumineuses
+---
 
-- **spells-aidedd.js** : ~493KB, 490+ sorts D&D 5e en français, 1 seule ligne JSON.
-  Variable: `var AIDEDD_SPELLS = [...]`
-- **bestiaire.js** : le code du module + potentiellement des données de monstres inline.
-  Les données du bestiaire sont stockées dans `DB.bestiary[]` via localStorage,
-  pas en dur dans le code (contrairement aux sorts). L'import se fait depuis AideDD.
+## Fonctions clés à connaître
 
-## État des patches (V8.1)
+### core/db.js
+| Fonction | Rôle |
+|---|---|
+| `save()` | Persiste DB (texte → localStorage, blobs → IndexedDB) |
+| `uid()` | Génère un ID unique (number) |
+| `updateMemberField(memberId, path, value)` | Met à jour un champ imbriqué d'un membre et re-render le résumé |
+| `updateResourceVal(memberId, resourceId, delta)` | Ajuste une ressource +/- |
+| `setResourceVal(memberId, resourceId, val)` | Fixe la valeur d'une ressource |
+| `removeResource(memberId, resourceId)` | Supprime une ressource |
+| `openEditResourceModal(memberId, resourceId)` | Modale d'édition ressource |
+| `toggleSaveProficiency(memberId, statKey)` | Toggle maîtrise jet de sauvegarde |
+| `toggleSkillProficiency(memberId, skillName)` | Toggle maîtrise compétence |
+| `toggleSkillExpertise(memberId, skillName)` | Toggle expertise compétence |
+| `panelDragStart/panelDrop` | Drag des panneaux du résumé |
+| `updateStats()` | Met à jour les compteurs header (membres, PO totaux, logs) |
 
-| Patch | Description | Statut | Fichiers modifiés |
-|-------|-------------|--------|-------------------|
-| 1 | Fusion Banque de Guilde → Trésorerie | ✅ Fait | `inventaire.js` |
-| Bug | Calcul richesse PO (flottants IEEE 754) | ✅ Fait | `inventaire.js` (calcWealthPO) |
-| 2a | Format objet unifié (normalizeItem) | ✅ Fait | `utils.js` |
-| 2b | Drag & Drop sans artefacts (DragDrop) | ✅ Fait | `utils.js`, `styles.css` |
-| 4 | Ressources Aventurier (slots sorts, capacités) | ✅ Fait | `member-resources.js` (nouveau) |
-| 3 | Import Bestiaire : Langues et FP | ⏳ À faire | `bestiaire.js` |
+### core/utils.js
+| Fonction | Rôle |
+|---|---|
+| `esc(s)` | Échappe HTML (utiliser dans tout rendu de données utilisateur) |
+| `mod(score)` | Calcule le modificateur D&D |
+| `modStr(score)` | Modificateur formaté (+2, -1…) |
+| `calcCarryCapacity(m)` | Calcule la capacité d'inventaire en cases |
+| `carryBar(m)` | HTML de la barre d'encombrement |
+| `badge(rarity)` | HTML d'un badge de rareté coloré |
+| `avatarEl(m, size)` | HTML de l'avatar (image ou emoji) |
+| `normalizeItem(raw)` | Normalise un objet brut au format standard |
+| `DragDrop.makeDraggable(el, id, source)` | Rend un élément draggable |
+| `DragDrop.makeDropZone(container, target, onDrop)` | Rend un conteneur droppable |
 
-## Ce qui a été modifié — inventaire.js (V8.1)
+### modules/aventuriers.js — renderMemberSummary()
+Génère le panneau résumé de l'aventurier avec des panneaux repositionnables par drag.
+Panneaux disponibles : `identity`, `stats`, `saves`, `skills`, `purse`, `weapons`, `gear`, `lore`, `npc`.
+L'ordre est persisté dans `member.panelOrder[]`.
 
-### Bug fix — calcWealthPO()
-Nouvelle fonction utilitaire qui convertit PP/PO/PA/PC/lingots en valeur PO arrondie à 2 décimales.
-Corrige les affichages parasites dus aux imprécisions IEEE 754 (`10.099999...` au lieu de `10.10`).
-À utiliser partout où un total en PO est calculé — remplace le calcul inline dans renderWealthPanel().
+---
 
-### Suppression de la section "Banque de Guilde" (Patch 1)
-Dans `renderWealthPanel()`, le bloc "🏦 Banque de la Guilde" a été supprimé car il faisait
-doublon avec la section "💰 Trésorerie de la Guilde". Concrètement :
-- Le titre et le sous-total `guildBankPO` affiché en header ont été retirés
-- La grille des fonds communs (PP/PO/PA/PC de `DB.guildBank`) a été supprimée de l'affichage
-- **`DB.guildBank` n'est pas supprimé des données** — la structure persiste en localStorage
-  pour ne pas casser l'import/export. Seul l'affichage est retiré.
+## État actuel des fonctionnalités (v1.0)
 
-### Conservation des dépôts individuels
-La section listant les dépôts par membre (`m.bank`) est conservée, renommée
-"🎒 Dépôts des Aventuriers" et intégrée directement dans le panneau Richesse.
-Elle reste masquée si aucun membre n'a de dépôt.
+| Fonctionnalité | État | Notes |
+|---|---|---|
+| Fiches aventuriers (stats, sorts, inventaire, lore) | ✅ Fonctionnel | |
+| Système d'encombrement en cases | ✅ Fonctionnel | |
+| Drag & drop inventaire (sacoche/casier/coffre) | ✅ Fonctionnel | |
+| Bourse + dépôt banque de guilde | ✅ Fonctionnel | |
+| Coffre de guilde + coffres nommés | ✅ Fonctionnel | |
+| Trésorerie (calcul PO anti-flottants) | ✅ Fonctionnel | |
+| Marché + marchands aléatoires | ✅ Fonctionnel | |
+| Investissements 5d6 | ✅ Fonctionnel | |
+| Journal de campagne | ✅ Fonctionnel | |
+| PNJ + statuts + interactions | ✅ Fonctionnel | |
+| Battlemaps + tokens + initiative | ✅ Fonctionnel | |
+| Bestiaire + import AideDD | ✅ Fonctionnel | |
+| Grimoire 490+ sorts | ✅ Fonctionnel | |
+| Quêtes / Factions / Timeline / Plans | ✅ Fonctionnel | |
+| Export / Import JSON | ✅ Fonctionnel | |
+| Thème clair/sombre | ✅ Fonctionnel | |
+| Ressources de classe (slots sorts, Ki…) | ⏳ Différé | Code présent dans member-resources.js, panneau masqué dans le résumé — à réintégrer |
+| Import Bestiaire : parsing Langues et FP | ⏳ À faire | Voir PATCHES.md Patch 3 |
 
-### Commentaires ajoutés
-Tout `inventaire.js` a été commenté :
-- Séparateurs `// ===` pour naviguer entre les grandes sections
-- JSDoc sur toutes les fonctions publiques
-- Commentaires inline sur les blocs logiques non évidents
-
-## Ce qui a été modifié — utils.js (V8.1)
-
-### [Patch 2a] normalizeItem(raw)
-Normalise un objet brut au format standard, quelle que soit la convention de nommage source.
-Supporte les champs legacy : `nom`, `rarete`, `quantite`, `poids`, `prix`, `qty`, `w`, etc.
-**À utiliser à CHAQUE création ou import d'objet** :
-```javascript
-DB.guildInventory.push(normalizeItem({nom:'Épée', quantite:1}));
-member.inventory.push(normalizeItem(rawLootItem));
-```
-
-### [Patch 2b] DragDrop
-Objet global remplaçant les anciens handlers qui stockaient `outerHTML` dans `dataTransfer`.
-Deux méthodes :
-- `DragDrop.makeDraggable(el, itemId, source)` — rend un élément draggable
-- `DragDrop.makeDropZone(container, target, onDrop)` — rend un conteneur droppable
-
-Le callback `onDrop(itemId, source, target)` est responsable de modifier DB puis re-render.
-**Important** : le système existant dans `aventuriers.js` (chestDragStart/chestDrop) coexiste
-sans conflit — il utilise son propre système plus spécialisé pour le coffre des membres.
-
-## Ce qui a été ajouté — member-resources.js (V8.1, Patch 4)
-
-Nouveau fichier gérant le panneau Ressources de l'onglet Résumé aventurier.
-
-### Trois types de ressources
-- `slot` : emplacement de sort (cases cochables, triées par niveau)
-- `usage` : capacité à utilisations limitées (boutons +/-)
-- `custom` : ressource personnalisée libre (boutons +/-)
-
-### Fonctions principales
-- `renderResourcesPanel(memberId)` — rendu du panneau complet
-- `showAddResourceModal(memberId, type)` — modale d'ajout
-- `confirmAddResource(memberId, type)` — validation et persistance
-- `toggleSpellSlot(memberId, resourceId, slotIndex)` — coche/décoche un emplacement
-- `resourcesAdjust(memberId, resourceId, delta)` — +/- sur une capacité
-- `resourcesRemove(memberId, resourceId)` — suppression
-- `resourcesDoRest(memberId, type)` — repos court ('court') ou long ('long')
-
-### Recharge
-- `long_rest` / `repos long` : rechargé par repos long
-- `short_rest` / `repos court` : rechargé par repos court
-- `dawn` : rechargé par repos long (assimilé)
-- `manual` / `manuel` : jamais rechargé automatiquement
-
-## Système d'onglets inventaire
-
-- `invTab` : 'guild' | 'member'
-- `invGuildTab` : 'items' | 'wealth' | 'market' | 'merchants' | 'invest' | 'chests'
-- `DB.guildBank` : {pp, po, pa, pc} — données conservées mais non affichées (doublon trésorerie)
-- `DB.wealth` : {pp, po, pa, pc, lingots} — trésorerie principale affichée dans l'onglet Richesse
-- `guildChests` : coffres nommés avec inventaire propre
-
-## Thème clair/sombre
-
-- Variables CSS dans `:root` (thème sombre par défaut)
-- `.light-mode` sur `<body>` pour le thème clair
-- Toggle dans `aventure.js` (section THEME TOGGLE)
-- Persisté dans `localStorage('cdp_theme')`
+---
 
 ## Pour travailler sur un fichier spécifique
 
-1. Lire ce CLAUDE.md d'abord
-2. Lire le fichier cible
-3. Identifier les dépendances (fonctions globales utilisées)
-4. Vérifier dans data-store.js ce qui est déjà déclaré (éviter les redéclarations)
-5. Modifier avec `str_replace` chirurgical
-6. `node --check` après chaque modif
-7. Tester dans le navigateur
+1. Lire ce CLAUDE.md
+2. Lire le fichier cible en entier
+3. Identifier les dépendances (fonctions globales utilisées, constantes de data-store.js)
+4. Vérifier si les IDs manipulés sont des numbers (utiliser `+id` dans les `find()`)
+5. Ne pas imbriquer les template literals
+6. Modifier avec `str_replace` chirurgical
+7. `node --check` sur chaque fichier modifié
+8. Tester dans le navigateur en `file://`
